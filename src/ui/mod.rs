@@ -10,8 +10,8 @@ use gpui_kit::*;
 
 use crate::{api::Client, config};
 use connect::{ConnectView, Connected};
-use main_view::{MainView, SignedOut};
 pub use main_view::bind_keys;
+use main_view::{MainView, SignedOut};
 
 enum Screen {
     Connect(Entity<ConnectView>),
@@ -30,28 +30,48 @@ impl AppView {
             _subscription: None,
         };
         match config::load() {
-            Some(saved) => this.show_main(Client::new(&saved.server_url, &saved.password), window, cx),
+            Some(saved) => {
+                this.show_main(Client::new(&saved.server_url, &saved.password), window, cx)
+            }
             None => this.show_connect(None, window, cx),
         }
         this
     }
 
-    fn show_connect(&mut self, previous: Option<config::Config>, window: &mut Window, cx: &mut Context<Self>) {
+    fn show_connect(
+        &mut self,
+        previous: Option<config::Config>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let view = cx.new(|cx| ConnectView::new(previous, window, cx));
-        self._subscription = Some(cx.subscribe_in(&view, window, |this, _, event: &Connected, window, cx| {
-            this.show_main(event.0.clone(), window, cx);
-        }));
+        self._subscription =
+            Some(
+                cx.subscribe_in(&view, window, |this, _, event: &Connected, window, cx| {
+                    this.show_main(event.0.clone(), window, cx);
+                }),
+            );
         self.screen = Screen::Connect(view);
         cx.notify();
     }
 
     fn show_main(&mut self, client: Client, window: &mut Window, cx: &mut Context<Self>) {
         let view = cx.new(|cx| MainView::new(client, window, cx));
-        self._subscription = Some(cx.subscribe_in(&view, window, |this, _, _: &SignedOut, window, cx| {
-            let previous = config::load();
-            config::clear();
-            this.show_connect(previous.map(|c| config::Config { password: String::new(), ..c }), window, cx);
-        }));
+        self._subscription =
+            Some(
+                cx.subscribe_in(&view, window, |this, _, _: &SignedOut, window, cx| {
+                    let previous = config::load();
+                    config::clear();
+                    this.show_connect(
+                        previous.map(|c| config::Config {
+                            password: String::new(),
+                            ..c
+                        }),
+                        window,
+                        cx,
+                    );
+                }),
+            );
         self.screen = Screen::Main(view);
         cx.notify();
     }

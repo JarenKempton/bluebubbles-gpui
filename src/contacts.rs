@@ -27,7 +27,9 @@ impl ContactBook {
                 if key.is_empty() {
                     continue;
                 }
-                book.names.entry(key.clone()).or_insert_with(|| name.clone());
+                book.names
+                    .entry(key.clone())
+                    .or_insert_with(|| name.clone());
                 if let Some(avatar) = &avatar {
                     book.avatars.entry(key).or_insert_with(|| avatar.clone());
                 }

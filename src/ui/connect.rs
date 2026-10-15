@@ -20,13 +20,27 @@ pub struct ConnectView {
 }
 
 impl ConnectView {
-    pub fn new(previous: Option<config::Config>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        previous: Option<config::Config>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let url = cx.new(|cx| InputState::new(window, cx).placeholder("http://your-mac:1234"));
-        let password = cx.new(|cx| InputState::new(window, cx).placeholder("Server password").masked(true));
+        let password = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Server password")
+                .masked(true)
+        });
         if let Some(previous) = previous {
-            url.update(cx, |state, cx| state.set_value(previous.server_url, window, cx));
+            url.update(cx, |state, cx| {
+                state.set_value(previous.server_url, window, cx)
+            });
         }
-        let submit = |this: &mut Self, _: &Entity<InputState>, event: &InputEvent, window: &mut Window, cx: &mut Context<Self>| {
+        let submit = |this: &mut Self,
+                      _: &Entity<InputState>,
+                      event: &InputEvent,
+                      window: &mut Window,
+                      cx: &mut Context<Self>| {
             if let InputEvent::PressEnter { .. } = event {
                 this.connect(window, cx);
             }
@@ -35,9 +49,19 @@ impl ConnectView {
             cx.subscribe_in(&url, window, submit),
             cx.subscribe_in(&password, window, submit),
         ];
-        let initial = if url.read(cx).value().is_empty() { &url } else { &password };
+        let initial = if url.read(cx).value().is_empty() {
+            &url
+        } else {
+            &password
+        };
         initial.update(cx, |state, cx| state.focus(window, cx));
-        Self { url, password, connecting: false, error: None, _subscriptions: subscriptions }
+        Self {
+            url,
+            password,
+            connecting: false,
+            error: None,
+            _subscriptions: subscriptions,
+        }
     }
 
     fn connect(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -62,9 +86,14 @@ impl ConnectView {
                 this.connecting = false;
                 match result {
                     Ok(_) => {
-                        let saved = config::Config { server_url: client.root().to_string(), password };
+                        let saved = config::Config {
+                            server_url: client.root().to_string(),
+                            password,
+                        };
                         if let Err(err) = config::save(&saved) {
-                            this.error = Some(format!("Connected, but couldn't save settings: {err}").into());
+                            this.error = Some(
+                                format!("Connected, but couldn't save settings: {err}").into(),
+                            );
                         }
                         cx.emit(Connected(client));
                     }
@@ -97,24 +126,36 @@ impl Render for ConnectView {
                         div()
                             .v_flex()
                             .gap_1()
-                            .child(div().text_2xl().font_semibold().child("Connect to your Mac"))
                             .child(
                                 div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Use the BlueBubbles server address and password from your Mac."),
-                            ),
+                                    .text_2xl()
+                                    .font_semibold()
+                                    .child("Connect to your Mac"),
+                            )
+                            .child(div().text_sm().text_color(theme.muted_foreground).child(
+                                "Use the BlueBubbles server address and password from your Mac.",
+                            )),
                     )
                     .child(field("Server", Input::new(&self.url), theme))
-                    .child(field("Password", Input::new(&self.password).mask_toggle(), theme))
-                    .children(self.error.clone().map(|error| {
-                        div().text_sm().text_color(theme.danger).child(error)
-                    }))
+                    .child(field(
+                        "Password",
+                        Input::new(&self.password).mask_toggle(),
+                        theme,
+                    ))
+                    .children(
+                        self.error
+                            .clone()
+                            .map(|error| div().text_sm().text_color(theme.danger).child(error)),
+                    )
                     .child(
                         Button::new("connect")
                             .primary()
                             .w_full()
-                            .label(if self.connecting { "Connecting…" } else { "Connect" })
+                            .label(if self.connecting {
+                                "Connecting…"
+                            } else {
+                                "Connect"
+                            })
                             .loading(self.connecting)
                             .on_click(cx.listener(|this, _, window, cx| this.connect(window, cx))),
                     ),
@@ -126,6 +167,12 @@ fn field(label: &'static str, input: Input, theme: &component::theme::Theme) -> 
     div()
         .v_flex()
         .gap_1p5()
-        .child(div().text_sm().font_medium().text_color(theme.muted_foreground).child(label))
+        .child(
+            div()
+                .text_sm()
+                .font_medium()
+                .text_color(theme.muted_foreground)
+                .child(label),
+        )
         .child(input)
 }

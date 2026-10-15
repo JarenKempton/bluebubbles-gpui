@@ -27,9 +27,18 @@ pub fn subscribe(client: &Client) -> mpsc::UnboundedReceiver<LiveEvent> {
                 .reconnect_delay(1_000, 10_000)
                 .max_reconnect_attempts(u8::MAX)
                 .on(Event::Connect, forward(&tx, |_| Some(LiveEvent::Connected)))
-                .on(Event::Close, forward(&tx, |_| Some(LiveEvent::Disconnected)))
-                .on("new-message", forward(&tx, |v| parse(v).map(LiveEvent::NewMessage)))
-                .on("updated-message", forward(&tx, |v| parse(v).map(LiveEvent::UpdatedMessage)));
+                .on(
+                    Event::Close,
+                    forward(&tx, |_| Some(LiveEvent::Disconnected)),
+                )
+                .on(
+                    "new-message",
+                    forward(&tx, |v| parse(v).map(LiveEvent::NewMessage)),
+                )
+                .on(
+                    "updated-message",
+                    forward(&tx, |v| parse(v).map(LiveEvent::UpdatedMessage)),
+                );
             match builder.connect().await {
                 Ok(socket) => {
                     while !tx.is_closed() {
@@ -51,7 +60,10 @@ pub fn subscribe(client: &Client) -> mpsc::UnboundedReceiver<LiveEvent> {
 }
 
 type Callback = Box<
-    dyn FnMut(Payload, rust_socketio::asynchronous::Client) -> futures::future::BoxFuture<'static, ()>
+    dyn FnMut(
+            Payload,
+            rust_socketio::asynchronous::Client,
+        ) -> futures::future::BoxFuture<'static, ()>
         + Send
         + Sync,
 >;
@@ -79,6 +91,7 @@ fn parse(value: Option<&Value>) -> Option<Message> {
 
 fn socket_url(client: &Client) -> String {
     let mut url = reqwest::Url::parse(client.root()).expect("server url was normalized");
-    url.query_pairs_mut().append_pair("password", client.password());
+    url.query_pairs_mut()
+        .append_pair("password", client.password());
     url.to_string()
 }

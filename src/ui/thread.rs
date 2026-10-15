@@ -6,8 +6,8 @@ use gpui_kit::component::{
     input::{Input, InputEvent, InputState},
     message_scroller::{MessageScroller, MessageScrollerState},
 };
-use gpui_kit::*;
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 
 use crate::{
     api::{Attachment, Client, Message},
@@ -33,7 +33,11 @@ struct Row {
 
 impl Row {
     fn new(msg: Message) -> Self {
-        Self { msg, pending: false, failure: None }
+        Self {
+            msg,
+            pending: false,
+            failure: None,
+        }
     }
 }
 
@@ -71,12 +75,18 @@ impl ThreadView {
         let scroller = cx.new(|cx| MessageScrollerState::new(1, cx));
         let composer = cx.new(|cx| InputState::new(window, cx).placeholder("iMessage"));
         let subscriptions = vec![
-            cx.subscribe_in(&composer, window, |this, _, event: &InputEvent, window, cx| match event {
-                InputEvent::PressEnter { .. } => this.send(window, cx),
-                InputEvent::Change => cx.notify(),
-                _ => {}
+            cx.subscribe_in(
+                &composer,
+                window,
+                |this, _, event: &InputEvent, window, cx| match event {
+                    InputEvent::PressEnter { .. } => this.send(window, cx),
+                    InputEvent::Change => cx.notify(),
+                    _ => {}
+                },
+            ),
+            cx.observe(&media, |this, _, cx| {
+                this.scroller.update(cx, |s, cx| s.remeasure(cx))
             }),
-            cx.observe(&media, |this, _, cx| this.scroller.update(cx, |s, cx| s.remeasure(cx))),
         ];
         composer.update(cx, |state, cx| state.focus(window, cx));
         let mut this = Self {
@@ -106,17 +116,23 @@ impl ThreadView {
     }
 
     pub fn focus_composer(&self, window: &mut Window, cx: &mut Context<Self>) {
-        self.composer.update(cx, |state, cx| state.focus(window, cx));
+        self.composer
+            .update(cx, |state, cx| state.focus(window, cx));
     }
 
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         let (client, guid) = (self.client.clone(), self.chat_guid.clone());
         cx.spawn(async move |this, cx| {
-            let Ok(mut batch) = runtime::run(async move { client.messages(&guid, None, PAGE).await }).await else {
+            let Ok(mut batch) =
+                runtime::run(async move { client.messages(&guid, None, PAGE).await }).await
+            else {
                 return;
             };
             batch.sort_by_key(|m| m.date_created);
-            this.update(cx, |this, cx| batch.into_iter().for_each(|m| this.ingest(m, cx))).ok();
+            this.update(cx, |this, cx| {
+                batch.into_iter().for_each(|m| this.ingest(m, cx))
+            })
+            .ok();
         })
         .detach();
     }
@@ -129,7 +145,8 @@ impl ThreadView {
         cx.notify();
         let (client, guid) = (self.client.clone(), self.chat_guid.clone());
         cx.spawn(async move |this, cx| {
-            let result = runtime::run(async move { client.messages(&guid, before, PAGE).await }).await;
+            let result =
+                runtime::run(async move { client.messages(&guid, before, PAGE).await }).await;
             this.update(cx, |this, cx| {
                 this.loading = false;
                 match result {
@@ -140,7 +157,8 @@ impl ThreadView {
                     }
                     Err(err) => this.error = Some(format!("{err:#}").into()),
                 }
-                this.scroller.update(cx, |s, cx| s.remeasure_items(0..1, cx));
+                this.scroller
+                    .update(cx, |s, cx| s.remeasure_items(0..1, cx));
                 cx.notify();
             })
             .ok();
@@ -195,7 +213,9 @@ impl ThreadView {
 
     fn insert(&mut self, row: Row, cx: &mut Context<Self>) {
         let previous_outgoing = self.rows.iter().rposition(|r| r.msg.is_from_me);
-        let ix = self.rows.partition_point(|r| r.msg.date_created <= row.msg.date_created);
+        let ix = self
+            .rows
+            .partition_point(|r| r.msg.date_created <= row.msg.date_created);
         self.rows.insert(ix, row);
         self.scroller.update(cx, |s, cx| {
             s.splice(ix + 1..ix + 1, 1, cx);
@@ -207,7 +227,8 @@ impl ThreadView {
     }
 
     fn remeasure(&mut self, ix: usize, cx: &mut Context<Self>) {
-        self.scroller.update(cx, |s, cx| s.remeasure_items(ix + 1..ix + 2, cx));
+        self.scroller
+            .update(cx, |s, cx| s.remeasure_items(ix + 1..ix + 2, cx));
         cx.notify();
     }
 
@@ -216,7 +237,8 @@ impl ThreadView {
         if text.is_empty() {
             return;
         }
-        self.composer.update(cx, |state, cx| state.set_value("", window, cx));
+        self.composer
+            .update(cx, |state, cx| state.set_value("", window, cx));
         let temp = format!("temp-{}", uuid::Uuid::new_v4());
         let draft = Message {
             guid: temp.clone(),
@@ -226,12 +248,20 @@ impl ThreadView {
             date_created: time::now_ms(),
             ..Default::default()
         };
-        self.insert(Row { msg: draft, pending: true, failure: None }, cx);
+        self.insert(
+            Row {
+                msg: draft,
+                pending: true,
+                failure: None,
+            },
+            cx,
+        );
         self.scroller.update(cx, |s, cx| s.scroll_to_end(cx));
         let (client, guid) = (self.client.clone(), self.chat_guid.clone());
         cx.spawn(async move |this, cx| {
             let sent_temp = temp.clone();
-            let result = runtime::run(async move { client.send_text(&guid, &sent_temp, &text).await }).await;
+            let result =
+                runtime::run(async move { client.send_text(&guid, &sent_temp, &text).await }).await;
             this.update(cx, |this, cx| match result {
                 Ok(mut msg) => {
                     msg.temp_guid = Some(temp);
@@ -261,9 +291,14 @@ impl ThreadView {
             return self.render_header_row(cx).into_any_element();
         }
         let i = ix - 1;
-        let Some(current) = self.rows.get(i) else { return div().into_any_element() };
+        let Some(current) = self.rows.get(i) else {
+            return div().into_any_element();
+        };
         let msg = &current.msg;
-        let previous = i.checked_sub(1).and_then(|p| self.rows.get(p)).map(|r| &r.msg);
+        let previous = i
+            .checked_sub(1)
+            .and_then(|p| self.rows.get(p))
+            .map(|r| &r.msg);
         let outgoing = msg.is_from_me;
         let last_outgoing = outgoing && !self.rows[i + 1..].iter().any(|r| r.msg.is_from_me);
 
@@ -273,19 +308,32 @@ impl ThreadView {
             column = column.child(row::divider(time::divider(msg.date_created), &theme));
         }
         if msg.item_type != 0 {
-            let text = if msg.body().is_empty() { "Conversation updated".to_string() } else { msg.body().to_string() };
+            let text = if msg.body().is_empty() {
+                "Conversation updated".to_string()
+            } else {
+                msg.body().to_string()
+            };
             return column.child(row::system(text, &theme)).into_any_element();
         }
-        let sender_changed =
-            new_section || previous.is_none_or(|p| p.is_from_me || p.item_type != 0 || sender_of(p) != sender_of(msg));
+        let sender_changed = new_section
+            || previous
+                .is_none_or(|p| p.is_from_me || p.item_type != 0 || sender_of(p) != sender_of(msg));
         if self.is_group && !outgoing && sender_changed {
             column = column.child(row::sender(self.contacts.display(&sender_of(msg)), &theme));
         }
 
-        let align = |el: Div| if outgoing { el.justify_end() } else { el.justify_start() };
+        let align = |el: Div| {
+            if outgoing {
+                el.justify_end()
+            } else {
+                el.justify_start()
+            }
+        };
         for attachment in msg.visible_attachments() {
             let element = if attachment.is_image() {
-                let loaded = self.media.update(cx, |m, cx| row::media_state(m.image(&attachment.guid, cx)));
+                let loaded = self
+                    .media
+                    .update(cx, |m, cx| row::media_state(m.image(&attachment.guid, cx)));
                 row::image(attachment, loaded, &theme)
             } else {
                 row::file(attachment, outgoing, &theme)
@@ -295,22 +343,37 @@ impl ThreadView {
                 align(div().w_full().flex().py_0p5()).child(
                     element
                         .id(SharedString::from(format!("att-{}", attachment.guid)))
-                        .on_click(cx.listener(move |this, _, _, _| this.open_attachment(&attachment))),
+                        .on_click(
+                            cx.listener(move |this, _, _, _| this.open_attachment(&attachment)),
+                        ),
                 ),
             );
         }
         if !msg.body().is_empty() {
-            let bubble = row::bubble(msg.body().to_string(), outgoing, current.failure.is_some(), &theme)
-                .when(current.pending, |el| el.opacity(0.65));
+            let bubble = row::bubble(
+                msg.body().to_string(),
+                outgoing,
+                current.failure.is_some(),
+                &theme,
+            )
+            .when(current.pending, |el| el.opacity(0.65));
             column = column.child(align(div().w_full().flex()).child(bubble));
         }
         let emojis = self.reactions.for_message(&msg.guid);
         if !emojis.is_empty() {
-            column = column.child(align(div().w_full().flex().px_2()).child(row::reactions(emojis, &theme)));
+            column = column
+                .child(align(div().w_full().flex().px_2()).child(row::reactions(emojis, &theme)));
         }
         if let Some(failure) = &current.failure {
             column = column.child(
-                div().w_full().flex().justify_end().pr_2().text_xs().text_color(theme.danger).child(format!("Not delivered — {failure}")),
+                div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .pr_2()
+                    .text_xs()
+                    .text_color(theme.danger)
+                    .child(format!("Not delivered — {failure}")),
             );
         } else if last_outgoing {
             let label = if current.pending {
@@ -324,7 +387,13 @@ impl ThreadView {
             } else {
                 "Sent"
             };
-            column = column.child(div().w_full().flex().justify_end().child(row::status(label, &theme)));
+            column = column.child(
+                div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .child(row::status(label, &theme)),
+            );
         }
         column.into_any_element()
     }
@@ -332,9 +401,17 @@ impl ThreadView {
     fn render_header_row(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let content: AnyElement = if self.loading {
-            div().text_xs().text_color(theme.muted_foreground).child("Loading…").into_any_element()
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("Loading…")
+                .into_any_element()
         } else if let Some(error) = &self.error {
-            div().text_xs().text_color(theme.danger).child(error.clone()).into_any_element()
+            div()
+                .text_xs()
+                .text_color(theme.danger)
+                .child(error.clone())
+                .into_any_element()
         } else if self.has_more && !self.rows.is_empty() {
             Button::new("older")
                 .ghost()
@@ -363,7 +440,10 @@ fn displayable(msg: &Message) -> bool {
 }
 
 fn sender_of(msg: &Message) -> String {
-    msg.handle.as_ref().map(|h| h.address.clone()).unwrap_or_default()
+    msg.handle
+        .as_ref()
+        .map(|h| h.address.clone())
+        .unwrap_or_default()
 }
 
 impl Render for ThreadView {
@@ -385,13 +465,22 @@ impl Render for ThreadView {
                     .border_b_1()
                     .border_color(theme.border)
                     .child(div().font_semibold().child(self.title.clone()))
-                    .child(div().text_xs().text_color(theme.muted_foreground).child(self.subtitle.clone())),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(self.subtitle.clone()),
+                    ),
             )
             .child(
                 div().flex_1().min_h_0().child(
-                    MessageScroller::new("messages", self.scroller.clone(), move |ix, window, cx| {
-                        view.update(cx, |this, cx| this.render_row(ix, window, cx))
-                    })
+                    MessageScroller::new(
+                        "messages",
+                        self.scroller.clone(),
+                        move |ix, window, cx| {
+                            view.update(cx, |this, cx| this.render_row(ix, window, cx))
+                        },
+                    )
                     .with_row_style(tight_rows())
                     .size_full(),
                 ),
@@ -405,7 +494,11 @@ impl Render for ThreadView {
                     .py_3()
                     .border_t_1()
                     .border_color(theme.border)
-                    .child(div().flex_1().child(Input::new(&self.composer).rounded_full()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(Input::new(&self.composer).rounded_full()),
+                    )
                     .child(
                         Button::new("send")
                             .icon(IconName::ArrowUp)

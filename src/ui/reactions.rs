@@ -20,7 +20,10 @@ impl Reactions {
         let sender = if msg.is_from_me {
             "me".to_string()
         } else {
-            msg.handle.as_ref().map(|h| h.address.clone()).unwrap_or_default()
+            msg.handle
+                .as_ref()
+                .map(|h| h.address.clone())
+                .unwrap_or_default()
         };
         let marks = self.by_target.entry(target.clone()).or_default();
         match marks.iter_mut().find(|mark| mark.sender == sender) {
@@ -29,7 +32,11 @@ impl Reactions {
                 mark.emoji = emoji;
                 mark.at = msg.date_created;
             }
-            None => marks.push(Mark { sender, emoji, at: msg.date_created }),
+            None => marks.push(Mark {
+                sender,
+                emoji,
+                at: msg.date_created,
+            }),
         }
         Some(target)
     }
@@ -76,7 +83,9 @@ mod tests {
         Message {
             guid: format!("r-{at}"),
             text: Some(text.to_string()),
-            handle: Some(Handle { address: from.to_string() }),
+            handle: Some(Handle {
+                address: from.to_string(),
+            }),
             date_created: at,
             associated_message_guid: Some("p:0/TARGET".to_string()),
             associated_message_type: Some(kind),

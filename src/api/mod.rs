@@ -82,7 +82,12 @@ impl Client {
         .await
     }
 
-    pub async fn messages(&self, chat_guid: &str, before: Option<i64>, limit: usize) -> Result<Vec<Message>> {
+    pub async fn messages(
+        &self,
+        chat_guid: &str,
+        before: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<Message>> {
         let mut query = vec![
             ("limit", limit.to_string()),
             ("sort", "DESC".to_string()),
@@ -91,7 +96,8 @@ impl Client {
         if let Some(before) = before {
             query.push(("before", before.to_string()));
         }
-        self.get(&format!("chat/{}/message", encode(chat_guid)), &query).await
+        self.get(&format!("chat/{}/message", encode(chat_guid)), &query)
+            .await
     }
 
     pub async fn send_text(&self, chat_guid: &str, temp_guid: &str, text: &str) -> Result<Message> {
@@ -133,7 +139,9 @@ async fn decode<T: DeserializeOwned>(response: reqwest::Response) -> Result<T> {
     let envelope: Value = serde_json::from_slice(&bytes)
         .with_context(|| format!("server returned {status} with a non-JSON body"))?;
     if !status.is_success() {
-        return Err(anyhow!(error_message(&envelope).unwrap_or_else(|| status.to_string())));
+        return Err(anyhow!(
+            error_message(&envelope).unwrap_or_else(|| status.to_string())
+        ));
     }
     let data = envelope.get("data").cloned().unwrap_or(Value::Null);
     serde_json::from_value(data).context("unexpected response shape from server")
@@ -153,7 +161,9 @@ fn encode(segment: &str) -> String {
     let mut out = String::with_capacity(segment.len());
     for byte in segment.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
@@ -175,7 +185,10 @@ mod tests {
 
     #[test]
     fn normalizes_bare_host() {
-        assert_eq!(normalize_url(" cheap-mini:1234/ "), "http://cheap-mini:1234");
+        assert_eq!(
+            normalize_url(" cheap-mini:1234/ "),
+            "http://cheap-mini:1234"
+        );
         assert_eq!(normalize_url("https://x.ts.net"), "https://x.ts.net");
     }
 

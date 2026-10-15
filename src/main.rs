@@ -25,7 +25,9 @@ fn main() {
                 app_id: Some("bluebubbles-gpui".into()),
                 ..Default::default()
             };
-            gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| ui::AppView::new(window, cx)))
-                .expect("failed to open window");
+            gpui_kit::open_window(options, cx, |window, cx| {
+                cx.new(|cx| ui::AppView::new(window, cx))
+            })
+            .expect("failed to open window");
         });
 }

@@ -18,7 +18,10 @@ pub struct MediaCache {
 
 impl MediaCache {
     pub fn new(client: Client) -> Self {
-        Self { client, images: HashMap::new() }
+        Self {
+            client,
+            images: HashMap::new(),
+        }
     }
 
     pub fn image(&mut self, guid: &str, cx: &mut Context<Self>) -> &Media {
@@ -35,8 +38,11 @@ impl MediaCache {
         cx.spawn(async move |this, cx| {
             let result = runtime::run(async move {
                 let bytes = client.attachment(&guid, Some(800)).await?;
-                let dims = imagesize::blob_size(&bytes).ok().map(|d| size(d.width as u32, d.height as u32));
-                let image = decode_image(bytes).ok_or_else(|| anyhow!("unsupported image format"))?;
+                let dims = imagesize::blob_size(&bytes)
+                    .ok()
+                    .map(|d| size(d.width as u32, d.height as u32));
+                let image =
+                    decode_image(bytes).ok_or_else(|| anyhow!("unsupported image format"))?;
                 anyhow::Ok((image, dims))
             })
             .await;
@@ -64,7 +70,21 @@ fn image_format(bytes: &[u8]) -> Option<ImageFormat> {
         [0x89, b'P', b'N', b'G', ..] => Some(ImageFormat::Png),
         [0xFF, 0xD8, ..] => Some(ImageFormat::Jpeg),
         [b'G', b'I', b'F', b'8', ..] => Some(ImageFormat::Gif),
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some(ImageFormat::Webp),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some(ImageFormat::Webp),
         [b'B', b'M', ..] => Some(ImageFormat::Bmp),
         [b'I', b'I', 0x2A, 0x00, ..] | [b'M', b'M', 0x00, 0x2A, ..] => Some(ImageFormat::Tiff),
         _ => None,
@@ -73,7 +93,9 @@ fn image_format(bytes: &[u8]) -> Option<ImageFormat> {
 
 pub fn open_attachment(client: Client, attachment: crate::api::Attachment) {
     runtime::spawn(async move {
-        let Ok(bytes) = client.attachment(&attachment.guid, None).await else { return };
+        let Ok(bytes) = client.attachment(&attachment.guid, None).await else {
+            return;
+        };
         let dir = dirs::download_dir()
             .unwrap_or_else(std::env::temp_dir)
             .join("BlueBubbles");
@@ -84,7 +106,9 @@ pub fn open_attachment(client: Client, attachment: crate::api::Attachment) {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| attachment.guid.clone());
         let path = dir.join(name);
-        if tokio::fs::create_dir_all(&dir).await.is_ok() && tokio::fs::write(&path, bytes).await.is_ok() {
+        if tokio::fs::create_dir_all(&dir).await.is_ok()
+            && tokio::fs::write(&path, bytes).await.is_ok()
+        {
             let _ = open::that_detached(&path);
         }
     });

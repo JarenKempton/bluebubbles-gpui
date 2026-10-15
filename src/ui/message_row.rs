@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use gpui_kit::component::{StyledExt as _, theme::Theme};
-use gpui_kit::*;
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 
 use crate::{api::Attachment, media::Media};
 
@@ -27,7 +27,12 @@ pub fn divider(label: String, theme: &Theme) -> Div {
 }
 
 pub fn sender(name: String, theme: &Theme) -> Div {
-    div().pl_3().pt_1().text_xs().text_color(theme.muted_foreground).child(name)
+    div()
+        .pl_3()
+        .pt_1()
+        .text_xs()
+        .text_color(theme.muted_foreground)
+        .child(name)
 }
 
 pub fn system(text: String, theme: &Theme) -> Div {
@@ -85,15 +90,30 @@ pub fn image(attachment: &Attachment, loaded: LoadedImage, theme: &Theme) -> Div
         .bg(theme.muted)
         .cursor_pointer();
     match loaded.image {
-        Some(image) => frame.child(img(ImageSource::Image(image)).size_full().object_fit(ObjectFit::Cover)),
-        None => frame.flex().items_center().justify_center().text_xs().text_color(theme.muted_foreground).child(
-            if loaded.failed { "Couldn't load image" } else { "Loading…" },
+        Some(image) => frame.child(
+            img(ImageSource::Image(image))
+                .size_full()
+                .object_fit(ObjectFit::Cover),
         ),
+        None => frame
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(if loaded.failed {
+                "Couldn't load image"
+            } else {
+                "Loading…"
+            }),
     }
 }
 
 pub fn file(attachment: &Attachment, outgoing: bool, theme: &Theme) -> Div {
-    let name = attachment.transfer_name.clone().unwrap_or_else(|| "Attachment".to_string());
+    let name = attachment
+        .transfer_name
+        .clone()
+        .unwrap_or_else(|| "Attachment".to_string());
     let size = attachment.total_bytes.map(human_size).unwrap_or_default();
     div()
         .max_w(px(BUBBLE_MAX_WIDTH))
@@ -108,7 +128,12 @@ pub fn file(attachment: &Attachment, outgoing: bool, theme: &Theme) -> Div {
         .cursor_pointer()
         .child(div().text_sm().child("📎"))
         .child(div().text_sm().truncate().child(name))
-        .child(div().text_xs().text_color(theme.muted_foreground).child(size))
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(size),
+        )
 }
 
 pub fn reactions(emojis: Vec<&str>, theme: &Theme) -> Div {
@@ -126,14 +151,30 @@ pub fn reactions(emojis: Vec<&str>, theme: &Theme) -> Div {
 }
 
 pub fn status(label: &'static str, theme: &Theme) -> Div {
-    div().pr_2().text_xs().text_color(theme.muted_foreground).child(label)
+    div()
+        .pr_2()
+        .text_xs()
+        .text_color(theme.muted_foreground)
+        .child(label)
 }
 
 pub fn media_state(media: &Media) -> LoadedImage {
     match media {
-        Media::Ready(image, dims) => LoadedImage { image: Some(image.clone()), dims: *dims, failed: false },
-        Media::Loading => LoadedImage { image: None, dims: None, failed: false },
-        Media::Failed => LoadedImage { image: None, dims: None, failed: true },
+        Media::Ready(image, dims) => LoadedImage {
+            image: Some(image.clone()),
+            dims: *dims,
+            failed: false,
+        },
+        Media::Loading => LoadedImage {
+            image: None,
+            dims: None,
+            failed: false,
+        },
+        Media::Failed => LoadedImage {
+            image: None,
+            dims: None,
+            failed: true,
+        },
     }
 }
 
