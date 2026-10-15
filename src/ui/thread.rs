@@ -3,7 +3,7 @@ use std::{path::PathBuf, rc::Rc, sync::Arc};
 use gpui_kit::component::{
     Disableable as _, Icon, IconName, Sizable as _, StyledExt as _,
     button::{Button, ButtonRounded, ButtonVariants as _},
-    input::{Input, InputEvent, InputState},
+    input::{InputEvent, Textarea, TextareaState},
     message_scroller::{MessageScroller, MessageScrollerState},
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -66,7 +66,7 @@ pub struct ThreadView {
     rows: Vec<Row>,
     reactions: Reactions,
     scroller: Entity<MessageScrollerState>,
-    composer: Entity<InputState>,
+    composer: Entity<TextareaState>,
     loading: bool,
     has_more: bool,
     error: Option<SharedString>,
@@ -86,13 +86,18 @@ impl ThreadView {
         cx: &mut Context<Self>,
     ) -> Self {
         let scroller = cx.new(|cx| MessageScrollerState::new(1, cx));
-        let composer = cx.new(|cx| InputState::new(window, cx).placeholder("iMessage"));
+        let composer = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .placeholder("iMessage")
+                .auto_grow(1, 8)
+                .submit_on_enter(true)
+        });
         let subscriptions = vec![
             cx.subscribe_in(
                 &composer,
                 window,
                 |this, _, event: &InputEvent, window, cx| match event {
-                    InputEvent::PressEnter { .. } => this.send(window, cx),
+                    InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
                     InputEvent::Change => cx.notify(),
                     _ => {}
                 },
@@ -651,7 +656,7 @@ impl ThreadView {
     fn render_composer(&mut self, p: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let can_send = !self.drafts.is_empty() || !self.composer.read(cx).value().trim().is_empty();
         let weak = cx.entity().downgrade();
-        let input = Input::new(&self.composer)
+        let input = Textarea::new(&self.composer)
             .appearance(false)
             .on_paste(move |item, _, cx| {
                 weak.update(cx, |this, cx| this.paste(item, cx))
@@ -715,6 +720,7 @@ impl ThreadView {
                     .child(
                         div()
                             .h_flex()
+                            .items_end()
                             .gap_2()
                             .child(
                                 round("attach", IconName::Plus)
