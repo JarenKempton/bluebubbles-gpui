@@ -1,8 +1,8 @@
 use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use gpui_kit::component::{
-    Icon, IconName, Sizable as _, StyledExt as _,
-    button::{Button, ButtonVariants as _},
+    Disableable as _, Icon, IconName, Sizable as _, StyledExt as _,
+    button::{Button, ButtonRounded, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
     message_scroller::{MessageScroller, MessageScrollerState},
 };
@@ -684,19 +684,11 @@ impl ThreadView {
                     )
                 }))
         });
-        let round = |id: &'static str, icon: IconName, bg: Hsla, fg: Hsla| {
-            div()
-                .id(id)
-                .size(px(32.))
-                .flex_none()
-                .rounded_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(bg)
-                .text_color(fg)
-                .cursor_pointer()
-                .child(Icon::new(icon).small())
+        let round = |id: &'static str, icon: IconName| {
+            Button::new(id)
+                .icon(Icon::new(icon).small())
+                .rounded(ButtonRounded::Size(px(16.)))
+                .with_size(px(32.))
         };
         div()
             .flex_none()
@@ -725,23 +717,19 @@ impl ThreadView {
                             .h_flex()
                             .gap_2()
                             .child(
-                                round("attach", IconName::Plus, p.surface, p.foreground)
-                                    .hover(|el| el.bg(p.row_selected))
+                                round("attach", IconName::Plus)
+                                    .ghost()
+                                    .tooltip("Attach files")
                                     .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx))),
                             )
                             .child(div().flex_1().child(input))
                             .child(
-                                round(
-                                    "send",
-                                    IconName::ArrowUp,
-                                    if can_send {
-                                        p.action
-                                    } else {
-                                        p.action.opacity(0.4)
-                                    },
-                                    p.action_foreground,
-                                )
-                                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx))),
+                                round("send", IconName::ArrowUp)
+                                    .info()
+                                    .disabled(!can_send)
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| this.send(window, cx)),
+                                    ),
                             ),
                     ),
             )

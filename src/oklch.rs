@@ -89,14 +89,6 @@ impl Ramp {
             h: self.hue,
         })
     }
-
-    pub fn action(&self) -> Hsla {
-        to_hsla(Oklch {
-            l: (self.accent.l + if self.step > 0. { 0.06 } else { -0.02 }).clamp(0.35, 0.85),
-            c: (self.accent.c * 0.9).max(0.06),
-            h: (self.hue + 50.) % 360.,
-        })
-    }
 }
 
 #[cfg(test)]
