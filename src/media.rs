@@ -8,7 +8,14 @@ use crate::{api::Client, runtime};
 pub enum Media {
     Loading,
     Ready(Arc<Image>, Option<Size<u32>>),
+    NotOnMac,
     Failed,
+}
+
+#[derive(Clone)]
+enum Source {
+    Attachment(String),
+    GroupIcon(String),
 }
 
 pub struct MediaCache {
@@ -25,19 +32,41 @@ impl MediaCache {
     }
 
     pub fn image(&mut self, guid: &str, cx: &mut Context<Self>) -> &Media {
-        if !self.images.contains_key(guid) {
-            self.images.insert(guid.to_string(), Media::Loading);
-            self.fetch(guid.to_string(), cx);
-        }
-        &self.images[guid]
+        self.get(guid.to_string(), Source::Attachment(guid.to_string()), cx)
     }
 
-    fn fetch(&self, guid: String, cx: &mut Context<Self>) {
+    pub fn insert_local(&mut self, guid: &str, image: Arc<Image>, dims: Option<Size<u32>>) {
+        self.images
+            .insert(guid.to_string(), Media::Ready(image, dims));
+    }
+
+    pub fn group_icon(&mut self, chat_guid: &str, cx: &mut Context<Self>) -> Option<Arc<Image>> {
+        match self.get(
+            format!("icon:{chat_guid}"),
+            Source::GroupIcon(chat_guid.to_string()),
+            cx,
+        ) {
+            Media::Ready(image, _) => Some(image.clone()),
+            _ => None,
+        }
+    }
+
+    fn get(&mut self, key: String, source: Source, cx: &mut Context<Self>) -> &Media {
+        if !self.images.contains_key(&key) {
+            self.images.insert(key.clone(), Media::Loading);
+            self.fetch(key.clone(), source, cx);
+        }
+        &self.images[&key]
+    }
+
+    fn fetch(&self, key: String, source: Source, cx: &mut Context<Self>) {
         let client = self.client.clone();
-        let key = guid.clone();
         cx.spawn(async move |this, cx| {
             let result = runtime::run(async move {
-                let bytes = client.attachment(&guid, Some(800)).await?;
+                let bytes = match source {
+                    Source::Attachment(guid) => client.attachment(&guid, Some(800)).await?,
+                    Source::GroupIcon(chat) => client.group_icon(&chat).await?,
+                };
                 let dims = imagesize::blob_size(&bytes)
                     .ok()
                     .map(|d| size(d.width as u32, d.height as u32));
@@ -49,6 +78,7 @@ impl MediaCache {
             this.update(cx, |this, cx| {
                 let media = match result {
                     Ok((image, dims)) => Media::Ready(image, dims),
+                    Err(err) if err.to_string().contains("does not exist") => Media::NotOnMac,
                     Err(_) => Media::Failed,
                 };
                 this.images.insert(key, media);

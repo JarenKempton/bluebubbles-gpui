@@ -1,11 +1,16 @@
 use gpui_kit::component::{
-    ActiveTheme as _, StyledExt as _,
+    StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
 };
 use gpui_kit::*;
 
-use crate::{api::Client, config, runtime};
+use crate::{
+    api::Client,
+    config,
+    omarchy::{Palette, palette},
+    runtime,
+};
 
 pub struct Connected(pub Client);
 
@@ -109,43 +114,49 @@ impl ConnectView {
 
 impl Render for ConnectView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let p = palette(cx).clone();
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .bg(theme.background)
-            .text_color(theme.foreground)
+            .bg(p.background)
+            .text_color(p.foreground)
             .child(
                 div()
                     .v_flex()
-                    .w(px(380.))
+                    .w(px(400.))
                     .gap_4()
+                    .p(px(20.))
+                    .rounded(px(14.))
+                    .bg(p.raised)
                     .child(
                         div()
                             .v_flex()
                             .gap_1()
                             .child(
                                 div()
-                                    .text_2xl()
-                                    .font_semibold()
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(p.bright_foreground)
                                     .child("Connect to your Mac"),
                             )
-                            .child(div().text_sm().text_color(theme.muted_foreground).child(
-                                "Use the BlueBubbles server address and password from your Mac.",
-                            )),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(p.dim_foreground)
+                                    .child("BlueBubbles server address and password."),
+                            ),
                     )
-                    .child(field("Server", Input::new(&self.url), theme))
+                    .child(field("Server", Input::new(&self.url), &p))
                     .child(field(
                         "Password",
                         Input::new(&self.password).mask_toggle(),
-                        theme,
+                        &p,
                     ))
                     .children(
                         self.error
                             .clone()
-                            .map(|error| div().text_sm().text_color(theme.danger).child(error)),
+                            .map(|error| div().text_xs().text_color(p.red).child(error)),
                     )
                     .child(
                         Button::new("connect")
@@ -163,16 +174,10 @@ impl Render for ConnectView {
     }
 }
 
-fn field(label: &'static str, input: Input, theme: &component::theme::Theme) -> impl IntoElement {
+fn field(label: &'static str, input: Input, p: &Palette) -> impl IntoElement {
     div()
         .v_flex()
         .gap_1p5()
-        .child(
-            div()
-                .text_sm()
-                .font_medium()
-                .text_color(theme.muted_foreground)
-                .child(label),
-        )
+        .child(div().text_xs().text_color(p.dim_foreground).child(label))
         .child(input)
 }

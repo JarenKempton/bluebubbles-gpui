@@ -62,7 +62,7 @@ fn key(address: &str) -> String {
     digits[start..].to_string()
 }
 
-fn format_address(address: &str) -> String {
+pub fn format_address(address: &str) -> String {
     let digits: String = address.chars().filter(char::is_ascii_digit).collect();
     match (address.starts_with('+'), digits.len()) {
         (true, 11) if digits.starts_with('1') => {

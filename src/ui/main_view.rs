@@ -2,10 +2,11 @@ use std::{ops::Range, rc::Rc};
 
 use futures::StreamExt as _;
 use gpui_kit::component::{
-    ActiveTheme as _, Sizable as _, StyledExt as _,
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::{
@@ -13,10 +14,11 @@ use crate::{
     contacts::ContactBook,
     live::{self, LiveEvent},
     media::MediaCache,
+    omarchy::palette,
     runtime,
     ui::{
         chat_list::{self, ChatEntry},
-        thread::{ThreadEvent, ThreadView},
+        thread::{ThreadEvent, ThreadHeader, ThreadView},
     },
 };
 
@@ -69,15 +71,19 @@ pub struct MainView {
 impl MainView {
     pub fn new(client: Client, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
-        let subscriptions = vec![cx.subscribe_in(
-            &search,
-            window,
-            |this, _, event: &InputEvent, window, cx| match event {
-                InputEvent::Change => this.refilter(cx),
-                InputEvent::PressEnter { .. } => this.select(0, window, cx),
-                _ => {}
-            },
-        )];
+        let media = cx.new(|_| MediaCache::new(client.clone()));
+        let subscriptions = vec![
+            cx.observe(&media, |_, _, cx| cx.notify()),
+            cx.subscribe_in(
+                &search,
+                window,
+                |this, _, event: &InputEvent, window, cx| match event {
+                    InputEvent::Change => this.refilter(cx),
+                    InputEvent::PressEnter { .. } => this.select(0, window, cx),
+                    _ => {}
+                },
+            ),
+        ];
         let mut events = live::subscribe(&client);
         let live = cx.spawn_in(window, async move |this, cx| {
             while let Some(event) = events.next().await {
@@ -90,7 +96,7 @@ impl MainView {
             }
         });
         let mut this = Self {
-            media: cx.new(|_| MediaCache::new(client.clone())),
+            media,
             client,
             contacts: Rc::default(),
             chats: Vec::new(),
@@ -257,29 +263,23 @@ impl MainView {
                 .chat
                 .participants
                 .first()
-                .map(|p| p.address.clone())
+                .map(|p| crate::contacts::format_address(&p.address))
                 .unwrap_or_default()
                 .into()
         };
-        let (title, is_group) = (entry.title.clone(), entry.chat.is_group());
+        let header = ThreadHeader {
+            title: entry.title.clone(),
+            subtitle,
+            is_group: entry.chat.is_group(),
+            faces: entry.faces.clone(),
+        };
         let (client, media, contacts) = (
             self.client.clone(),
             self.media.clone(),
             self.contacts.clone(),
         );
-        let thread = cx.new(|cx| {
-            ThreadView::new(
-                client,
-                media,
-                contacts,
-                guid.clone(),
-                title,
-                subtitle,
-                is_group,
-                window,
-                cx,
-            )
-        });
+        let thread =
+            cx.new(|cx| ThreadView::new(client, media, contacts, guid.clone(), header, window, cx));
         self._thread_subscription = Some(cx.subscribe(
             &thread,
             |this, _, event: &ThreadEvent, cx| match event {
@@ -405,13 +405,20 @@ impl MainView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let theme = cx.theme().clone();
         range
             .filter_map(|ix| {
                 let entry = self.entries.get(*self.visible.get(ix)?)?;
                 let selected = self.selected.as_deref() == Some(entry.chat.guid.as_str());
+                let icon = entry
+                    .chat
+                    .is_group()
+                    .then(|| {
+                        self.media
+                            .update(cx, |m, cx| m.group_icon(&entry.chat.guid, cx))
+                    })
+                    .flatten();
                 Some(
-                    chat_list::row(entry, selected, &theme)
+                    chat_list::row(entry, icon, selected, cx)
                         .id(ix)
                         .on_click(
                             cx.listener(move |this, _, window, cx| this.select(ix, window, cx)),
@@ -423,65 +430,70 @@ impl MainView {
     }
 
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let (dot, label) = match self.link {
-            Link::Online => (theme.green, "Connected"),
-            Link::Connecting => (theme.yellow, "Connecting…"),
-            Link::Offline => (theme.red, "Offline — reconnecting"),
-        };
+        let p = palette(cx).clone();
         div()
-            .w(px(340.))
+            .w(px(300.))
             .flex_none()
             .h_full()
             .v_flex()
-            .bg(theme.sidebar)
-            .border_r_1()
-            .border_color(theme.sidebar_border)
+            .bg(p.sidebar)
+            .text_color(p.foreground)
             .child(
                 div()
-                    .h(px(56.))
+                    .h(px(48.))
                     .flex_none()
                     .px_4()
                     .h_flex()
                     .gap_2()
-                    .child(div().text_lg().font_semibold().child("Messages"))
                     .child(
                         div()
-                            .id("link")
-                            .size(px(8.))
-                            .rounded_full()
-                            .bg(dot)
-                            .tooltip(move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(label).build(window, cx)
-                            }),
+                            .text_sm()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Messages"),
                     )
+                    .when(self.link == Link::Offline, |el| {
+                        el.child(div().text_xs().text_color(p.red).child("Offline"))
+                    })
                     .child(div().flex_1())
                     .child(
                         Button::new("sign-out")
                             .label("Sign out")
                             .ghost()
-                            .small()
+                            .xsmall()
                             .tooltip("Forget this server")
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(SignedOut))),
                     ),
             )
             .child(
-                div()
-                    .px_3()
-                    .pb_2()
-                    .child(Input::new(&self.search).cleanable(true).small()),
+                div().px_2().pb_2().child(
+                    div()
+                        .h(px(36.))
+                        .px(px(10.))
+                        .h_flex()
+                        .gap_2p5()
+                        .rounded(px(8.))
+                        .hover(|el| el.bg(p.row_hover))
+                        .child(
+                            Icon::new(IconName::Search)
+                                .small()
+                                .text_color(p.dim_foreground),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .child(Input::new(&self.search).appearance(false).cleanable(true)),
+                        ),
+                ),
             )
-            .children(self.load_error.clone().map(|err| {
-                div()
-                    .px_4()
-                    .py_2()
-                    .text_xs()
-                    .text_color(theme.danger)
-                    .child(err)
-            }))
+            .children(
+                self.load_error
+                    .clone()
+                    .map(|err| div().px_4().py_2().text_xs().text_color(p.red).child(err)),
+            )
             .child(
                 uniform_list("chats", self.visible.len(), cx.processor(Self::render_rows))
                     .track_scroll(&self.list_scroll)
+                    .px_2()
                     .flex_1(),
             )
     }
@@ -499,6 +511,7 @@ impl Render for MainView {
                 .items_center()
                 .justify_center()
                 .text_color(theme.muted_foreground)
+                .text_sm()
                 .child(if self.entries.is_empty() {
                     "Loading conversations…"
                 } else {

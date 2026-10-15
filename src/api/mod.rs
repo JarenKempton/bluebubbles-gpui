@@ -113,23 +113,74 @@ impl Client {
         .await
     }
 
+    pub async fn send_attachment(
+        &self,
+        chat_guid: &str,
+        temp_guid: &str,
+        name: &str,
+        mime: &str,
+        bytes: Vec<u8>,
+    ) -> Result<Message> {
+        let file = reqwest::multipart::Part::bytes(bytes)
+            .file_name(name.to_string())
+            .mime_str(mime)?;
+        let form = reqwest::multipart::Form::new()
+            .text("chatGuid", chat_guid.to_string())
+            .text("tempGuid", temp_guid.to_string())
+            .text("name", name.to_string())
+            .text("method", "apple-script")
+            .part("attachment", file);
+        let response = self
+            .http
+            .post(self.url("message/attachment"))
+            .query(&[("password", &self.password)])
+            .multipart(form)
+            .timeout(Duration::from_secs(300))
+            .send()
+            .await
+            .with_context(|| format!("could not reach {}", self.root))?;
+        decode(response).await
+    }
+
     pub async fn contacts(&self) -> Result<Vec<Contact>> {
-        self.get("contact", &[]).await
+        self.get("contact", &[("extraProperties", "avatar".to_string())])
+            .await
+    }
+
+    pub async fn group_icon(&self, chat_guid: &str) -> Result<Vec<u8>> {
+        self.download(&format!("chat/{}/icon", encode(chat_guid)), &[])
+            .await
     }
 
     pub async fn attachment(&self, guid: &str, max_width: Option<u32>) -> Result<Vec<u8>> {
-        let mut request = self
+        let query: Vec<(&str, String)> = max_width
+            .map(|w| ("width", w.to_string()))
+            .into_iter()
+            .collect();
+        self.download(&format!("attachment/{}/download", encode(guid)), &query)
+            .await
+    }
+
+    async fn download(&self, path: &str, query: &[(&str, String)]) -> Result<Vec<u8>> {
+        let response = self
             .http
-            .get(self.url(&format!("attachment/{}/download", encode(guid))))
-            .query(&[("password", &self.password)]);
-        if let Some(width) = max_width {
-            request = request.query(&[("width", width.to_string())]);
+            .get(self.url(path))
+            .query(&[("password", &self.password)])
+            .query(query)
+            .send()
+            .await?;
+        let status = response.status();
+        let bytes = response.bytes().await?;
+        if !status.is_success() {
+            let message = serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .as_ref()
+                .and_then(error_message);
+            return Err(anyhow!(
+                message.unwrap_or_else(|| format!("download failed: {status}"))
+            ));
         }
-        let response = request.send().await?;
-        if !response.status().is_success() {
-            return Err(anyhow!("attachment download failed: {}", response.status()));
-        }
-        Ok(response.bytes().await?.to_vec())
+        Ok(bytes.to_vec())
     }
 }
 

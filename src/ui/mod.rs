@@ -1,5 +1,7 @@
+mod avatar;
 mod chat_list;
 mod connect;
+mod draft;
 mod main_view;
 mod message_row;
 mod reactions;
