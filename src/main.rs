@@ -6,6 +6,7 @@ mod media;
 mod oklch;
 mod omarchy;
 mod runtime;
+mod self_update;
 mod ui;
 
 use gpui_kit::*;

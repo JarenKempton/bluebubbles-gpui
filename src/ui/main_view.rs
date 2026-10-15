@@ -1,4 +1,4 @@
-use std::{ops::Range, rc::Rc};
+use std::{ops::Range, rc::Rc, time::Duration};
 
 use futures::StreamExt as _;
 use gpui_kit::component::{
@@ -16,6 +16,7 @@ use crate::{
     media::MediaCache,
     omarchy::palette,
     runtime,
+    self_update::InstalledBinary,
     ui::{
         chat_list::{self, ChatEntry},
         thread::{ThreadEvent, ThreadHeader, ThreadView},
@@ -63,6 +64,7 @@ pub struct MainView {
     has_connected: bool,
     list_scroll: UniformListScrollHandle,
     focus_handle: FocusHandle,
+    update_ready: bool,
     _subscriptions: Vec<Subscription>,
     _thread_subscription: Option<Subscription>,
     _live: Task<()>,
@@ -110,14 +112,44 @@ impl MainView {
             has_connected: false,
             list_scroll: UniformListScrollHandle::new(),
             focus_handle: cx.focus_handle(),
+            update_ready: false,
             _subscriptions: subscriptions,
             _thread_subscription: None,
             _live: live,
         };
         this.focus_handle.focus(window, cx);
+        this.watch_for_update(cx);
         this.load_contacts(cx);
         this.load_chats(cx);
         this
+    }
+
+    fn watch_for_update(&mut self, cx: &mut Context<Self>) {
+        let Some(binary) = InstalledBinary::current() else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_secs(30))
+                    .await;
+                if binary.replaced() {
+                    this.update(cx, |this, cx| {
+                        this.update_ready = true;
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn restart(&mut self, cx: &mut Context<Self>) {
+        if InstalledBinary::current().is_some_and(|binary| binary.relaunch()) {
+            cx.quit();
+        }
     }
 
     fn load_contacts(&mut self, cx: &mut Context<Self>) {
@@ -455,6 +487,16 @@ impl MainView {
                         el.child(div().text_xs().text_color(p.red).child("Offline"))
                     })
                     .child(div().flex_1())
+                    .when(self.update_ready, |el| {
+                        el.child(
+                            Button::new("restart")
+                                .label("Update ready")
+                                .primary()
+                                .xsmall()
+                                .tooltip("Restart into the new build")
+                                .on_click(cx.listener(|this, _, _, cx| this.restart(cx))),
+                        )
+                    })
                     .child(
                         Button::new("sign-out")
                             .label("Sign out")
