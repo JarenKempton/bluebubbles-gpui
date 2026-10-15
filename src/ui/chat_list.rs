@@ -1,16 +1,20 @@
 use std::sync::Arc;
 
-use gpui_kit::component::{StyledExt as _, avatar::Avatar, theme::Theme};
-use gpui_kit::*;
+use gpui_kit::component::StyledExt as _;
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 
 use crate::{
     api::{Chat, Message},
     contacts::ContactBook,
-    ui::time,
+    omarchy::palette,
+    ui::{
+        avatar::{self, Face},
+        time,
+    },
 };
 
-pub const ROW_HEIGHT: f32 = 68.;
+pub const ROW_HEIGHT: f32 = 64.;
 
 pub struct ChatEntry {
     pub chat: Chat,
@@ -18,30 +22,57 @@ pub struct ChatEntry {
     pub preview: SharedString,
     pub stamp: SharedString,
     pub unread: bool,
-    pub avatar: Option<Arc<Image>>,
+    pub faces: Vec<Face>,
 }
 
 impl ChatEntry {
     pub fn build(chat: Chat, contacts: &ContactBook) -> Self {
         let last = chat.last_message.as_ref();
         let last_at = last.map(|m| m.date_created).unwrap_or_default();
-        let avatar = match chat.participants.as_slice() {
-            [only] if !chat.is_group() => contacts.avatar(&only.address),
-            _ => None,
-        };
         Self {
             title: title(&chat, contacts).into(),
             preview: last.map(preview).unwrap_or_default().into(),
-            stamp: if last_at > 0 { time::list_stamp(last_at).into() } else { SharedString::default() },
-            unread: last.is_some_and(|m| !m.is_from_me && m.date_read.is_none() && !m.is_reaction()),
-            avatar,
+            stamp: if last_at > 0 {
+                time::list_stamp(last_at).into()
+            } else {
+                SharedString::default()
+            },
+            unread: last
+                .is_some_and(|m| !m.is_from_me && m.date_read.is_none() && !m.is_reaction()),
+            faces: faces(&chat, contacts),
             chat,
         }
     }
 }
 
+pub fn face_for(address: &str, contacts: &ContactBook) -> Face {
+    Face {
+        name: contacts
+            .name(address)
+            .unwrap_or_default()
+            .to_string()
+            .into(),
+        image: contacts.avatar(address),
+    }
+}
+
+fn faces(chat: &Chat, contacts: &ContactBook) -> Vec<Face> {
+    let mut faces: Vec<Face> = chat
+        .participants
+        .iter()
+        .map(|p| face_for(&p.address, contacts))
+        .collect();
+    faces.sort_by_key(|f| (f.image.is_none(), f.name.is_empty()));
+    faces.truncate(2);
+    faces
+}
+
 pub fn title(chat: &Chat, contacts: &ContactBook) -> String {
-    if let Some(name) = chat.display_name.as_deref().filter(|n| !n.trim().is_empty()) {
+    if let Some(name) = chat
+        .display_name
+        .as_deref()
+        .filter(|n| !n.trim().is_empty())
+    {
         return name.trim().to_string();
     }
     if !chat.participants.is_empty() {
@@ -72,69 +103,107 @@ pub fn preview(msg: &Message) -> String {
     }
 }
 
-pub fn row(entry: &ChatEntry, selected: bool, theme: &Theme) -> Div {
-    let mut avatar = Avatar::new();
-    let initials_source: Vec<&str> = entry.title.split([' ', ',']).filter(|w| w.starts_with(char::is_alphabetic)).collect();
-    if !initials_source.is_empty() {
-        avatar = avatar.name(initials_source.join(" "));
-    }
-    if let Some(image) = &entry.avatar {
-        avatar = avatar.src(ImageSource::Image(image.clone()));
-    }
-    div()
-        .h(px(ROW_HEIGHT))
-        .px_2()
-        .child(
-            div()
-                .size_full()
-                .h_flex()
-                .gap_3()
-                .px_2()
-                .rounded_lg()
-                .when(selected, |el| el.bg(theme.list_active))
-                .when(!selected, |el| el.hover(|el| el.bg(theme.list_hover)))
-                .child(
-                    div()
-                        .w(px(8.))
-                        .flex_none()
-                        .child(div().when(entry.unread, |el| el.size(px(8.)).rounded_full().bg(theme.blue))),
-                )
-                .child(avatar)
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .v_flex()
-                        .gap_0p5()
-                        .child(
-                            div()
-                                .h_flex()
-                                .gap_2()
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .truncate()
-                                        .font_semibold()
-                                        .text_sm()
-                                        .child(entry.title.clone()),
-                                )
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .text_xs()
-                                        .text_color(theme.muted_foreground)
-                                        .child(entry.stamp.clone()),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .truncate()
-                                .text_sm()
-                                .text_color(theme.muted_foreground)
-                                .child(entry.preview.clone()),
-                        ),
-                ),
+pub fn chat_avatar(
+    entry: &ChatEntry,
+    icon: Option<Arc<Image>>,
+    size: Pixels,
+    ring: Hsla,
+    cx: &App,
+) -> Div {
+    if entry.chat.is_group() {
+        avatar::group(&entry.faces, icon, size, ring, cx)
+    } else {
+        let fallback = Face {
+            name: entry.title.clone(),
+            image: None,
+        };
+        avatar::face(
+            entry
+                .faces
+                .first()
+                .filter(|f| f.image.is_some())
+                .unwrap_or(&fallback),
+            size,
+            cx,
         )
+    }
 }
 
+pub fn row(entry: &ChatEntry, icon: Option<Arc<Image>>, selected: bool, cx: &App) -> Div {
+    let p = palette(cx).clone();
+    div().h(px(ROW_HEIGHT)).w_full().pb(px(2.)).child(
+        div()
+            .size_full()
+            .h_flex()
+            .gap_2p5()
+            .px(px(10.))
+            .rounded(px(8.))
+            .when(selected, |el| el.bg(p.row_selected))
+            .when(!selected, |el| el.hover(|el| el.bg(p.row_hover)))
+            .child(chat_avatar(
+                entry,
+                icon,
+                px(36.),
+                if selected { p.row_selected } else { p.sidebar },
+                cx,
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .v_flex()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_sm()
+                                    .font_weight(if entry.unread {
+                                        FontWeight::SEMIBOLD
+                                    } else {
+                                        FontWeight::MEDIUM
+                                    })
+                                    .text_color(p.foreground.opacity(if entry.unread || selected {
+                                        1.
+                                    } else {
+                                        0.9
+                                    }))
+                                    .child(entry.title.clone()),
+                            )
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .text_xs()
+                                    .text_color(if entry.unread {
+                                        p.accent
+                                    } else {
+                                        p.dim_foreground
+                                    })
+                                    .child(entry.stamp.clone()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_xs()
+                                    .text_color(p.dim_foreground)
+                                    .child(entry.preview.clone()),
+                            )
+                            .when(entry.unread, |el| {
+                                el.child(div().flex_none().size(px(7.)).rounded_full().bg(p.accent))
+                            }),
+                    ),
+            ),
+    )
+}

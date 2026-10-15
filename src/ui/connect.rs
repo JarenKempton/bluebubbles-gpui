@@ -1,11 +1,16 @@
 use gpui_kit::component::{
-    ActiveTheme as _, StyledExt as _,
+    StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
 };
 use gpui_kit::*;
 
-use crate::{api::Client, config, runtime};
+use crate::{
+    api::Client,
+    config,
+    omarchy::{Palette, palette},
+    runtime,
+};
 
 pub struct Connected(pub Client);
 
@@ -20,13 +25,27 @@ pub struct ConnectView {
 }
 
 impl ConnectView {
-    pub fn new(previous: Option<config::Config>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        previous: Option<config::Config>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let url = cx.new(|cx| InputState::new(window, cx).placeholder("http://your-mac:1234"));
-        let password = cx.new(|cx| InputState::new(window, cx).placeholder("Server password").masked(true));
+        let password = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Server password")
+                .masked(true)
+        });
         if let Some(previous) = previous {
-            url.update(cx, |state, cx| state.set_value(previous.server_url, window, cx));
+            url.update(cx, |state, cx| {
+                state.set_value(previous.server_url, window, cx)
+            });
         }
-        let submit = |this: &mut Self, _: &Entity<InputState>, event: &InputEvent, window: &mut Window, cx: &mut Context<Self>| {
+        let submit = |this: &mut Self,
+                      _: &Entity<InputState>,
+                      event: &InputEvent,
+                      window: &mut Window,
+                      cx: &mut Context<Self>| {
             if let InputEvent::PressEnter { .. } = event {
                 this.connect(window, cx);
             }
@@ -35,9 +54,19 @@ impl ConnectView {
             cx.subscribe_in(&url, window, submit),
             cx.subscribe_in(&password, window, submit),
         ];
-        let initial = if url.read(cx).value().is_empty() { &url } else { &password };
+        let initial = if url.read(cx).value().is_empty() {
+            &url
+        } else {
+            &password
+        };
         initial.update(cx, |state, cx| state.focus(window, cx));
-        Self { url, password, connecting: false, error: None, _subscriptions: subscriptions }
+        Self {
+            url,
+            password,
+            connecting: false,
+            error: None,
+            _subscriptions: subscriptions,
+        }
     }
 
     fn connect(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -62,9 +91,14 @@ impl ConnectView {
                 this.connecting = false;
                 match result {
                     Ok(_) => {
-                        let saved = config::Config { server_url: client.root().to_string(), password };
+                        let saved = config::Config {
+                            server_url: client.root().to_string(),
+                            password,
+                        };
                         if let Err(err) = config::save(&saved) {
-                            this.error = Some(format!("Connected, but couldn't save settings: {err}").into());
+                            this.error = Some(
+                                format!("Connected, but couldn't save settings: {err}").into(),
+                            );
                         }
                         cx.emit(Connected(client));
                     }
@@ -80,41 +114,59 @@ impl ConnectView {
 
 impl Render for ConnectView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let p = palette(cx).clone();
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .bg(theme.background)
-            .text_color(theme.foreground)
+            .bg(p.background)
+            .text_color(p.foreground)
             .child(
                 div()
                     .v_flex()
-                    .w(px(380.))
+                    .w(px(400.))
                     .gap_4()
+                    .p(px(20.))
+                    .rounded(px(14.))
+                    .bg(p.raised)
                     .child(
                         div()
                             .v_flex()
                             .gap_1()
-                            .child(div().text_2xl().font_semibold().child("Connect to your Mac"))
                             .child(
                                 div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Use the BlueBubbles server address and password from your Mac."),
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(p.bright_foreground)
+                                    .child("Connect to your Mac"),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(p.dim_foreground)
+                                    .child("BlueBubbles server address and password."),
                             ),
                     )
-                    .child(field("Server", Input::new(&self.url), theme))
-                    .child(field("Password", Input::new(&self.password).mask_toggle(), theme))
-                    .children(self.error.clone().map(|error| {
-                        div().text_sm().text_color(theme.danger).child(error)
-                    }))
+                    .child(field("Server", Input::new(&self.url), &p))
+                    .child(field(
+                        "Password",
+                        Input::new(&self.password).mask_toggle(),
+                        &p,
+                    ))
+                    .children(
+                        self.error
+                            .clone()
+                            .map(|error| div().text_xs().text_color(p.red).child(error)),
+                    )
                     .child(
                         Button::new("connect")
                             .primary()
                             .w_full()
-                            .label(if self.connecting { "Connecting…" } else { "Connect" })
+                            .label(if self.connecting {
+                                "Connecting…"
+                            } else {
+                                "Connect"
+                            })
                             .loading(self.connecting)
                             .on_click(cx.listener(|this, _, window, cx| this.connect(window, cx))),
                     ),
@@ -122,10 +174,10 @@ impl Render for ConnectView {
     }
 }
 
-fn field(label: &'static str, input: Input, theme: &component::theme::Theme) -> impl IntoElement {
+fn field(label: &'static str, input: Input, p: &Palette) -> impl IntoElement {
     div()
         .v_flex()
         .gap_1p5()
-        .child(div().text_sm().font_medium().text_color(theme.muted_foreground).child(label))
+        .child(div().text_xs().text_color(p.dim_foreground).child(label))
         .child(input)
 }

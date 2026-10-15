@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Messages
+Comment=iMessage through your BlueBubbles server
+Exec=bluebubbles-gpui
+Icon=bluebubbles-gpui
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+StartupWMClass=bluebubbles-gpui

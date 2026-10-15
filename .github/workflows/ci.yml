@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev libfontconfig-dev libfreetype-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libx11-xcb-dev libxcb1-dev libvulkan-dev libzstd-dev libasound2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+      - name: Release build
+        if: github.event_name == 'push'
+        run: |
+          cargo build --release
+          mkdir -p dist/bluebubbles-gpui
+          cp target/release/bluebubbles-gpui packaging/bluebubbles-gpui.desktop packaging/bluebubbles-gpui.svg dist/bluebubbles-gpui/
+          echo "$GITHUB_SHA" > dist/bluebubbles-gpui/VERSION
+          tar -C dist -czf bluebubbles-gpui-x86_64-linux.tar.gz bluebubbles-gpui
+
+      - name: Publish rolling release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete main-build --cleanup-tag --yes || true
+          gh release create main-build bluebubbles-gpui-x86_64-linux.tar.gz \
+            --target "$GITHUB_SHA" --title "$GITHUB_SHA" --latest \
+            --notes "Built from $GITHUB_SHA"

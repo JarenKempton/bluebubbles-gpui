@@ -27,7 +27,9 @@ impl ContactBook {
                 if key.is_empty() {
                     continue;
                 }
-                book.names.entry(key.clone()).or_insert_with(|| name.clone());
+                book.names
+                    .entry(key.clone())
+                    .or_insert_with(|| name.clone());
                 if let Some(avatar) = &avatar {
                     book.avatars.entry(key).or_insert_with(|| avatar.clone());
                 }
@@ -60,7 +62,7 @@ fn key(address: &str) -> String {
     digits[start..].to_string()
 }
 
-fn format_address(address: &str) -> String {
+pub fn format_address(address: &str) -> String {
     let digits: String = address.chars().filter(char::is_ascii_digit).collect();
     match (address.starts_with('+'), digits.len()) {
         (true, 11) if digits.starts_with('1') => {

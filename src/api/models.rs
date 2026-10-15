@@ -156,7 +156,11 @@ pub struct Contact {
 
 impl Contact {
     pub fn name(&self) -> Option<String> {
-        if let Some(name) = self.display_name.as_deref().filter(|n| !n.trim().is_empty()) {
+        if let Some(name) = self
+            .display_name
+            .as_deref()
+            .filter(|n| !n.trim().is_empty())
+        {
             return Some(name.trim().to_string());
         }
         let joined = [self.first_name.as_deref(), self.last_name.as_deref()]

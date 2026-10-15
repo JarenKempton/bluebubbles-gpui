@@ -9,7 +9,9 @@ pub fn now_ms() -> i64 {
 }
 
 pub fn list_stamp(ms: i64) -> String {
-    let Some(time) = local(ms) else { return String::new() };
+    let Some(time) = local(ms) else {
+        return String::new();
+    };
     let now = Local::now();
     let days = (now.date_naive() - time.date_naive()).num_days();
     match days {
@@ -21,7 +23,9 @@ pub fn list_stamp(ms: i64) -> String {
 }
 
 pub fn divider(ms: i64) -> String {
-    let Some(time) = local(ms) else { return String::new() };
+    let Some(time) = local(ms) else {
+        return String::new();
+    };
     let now = Local::now();
     let days = (now.date_naive() - time.date_naive()).num_days();
     let clock = time.format("%-I:%M %p");
@@ -35,7 +39,11 @@ pub fn divider(ms: i64) -> String {
 }
 
 pub fn needs_divider(previous: Option<i64>, current: i64) -> bool {
-    let Some(previous) = previous else { return true };
-    let (Some(a), Some(b)) = (local(previous), local(current)) else { return false };
+    let Some(previous) = previous else {
+        return true;
+    };
+    let (Some(a), Some(b)) = (local(previous), local(current)) else {
+        return false;
+    };
     a.date_naive() != b.date_naive() || current - previous >= 60 * 60 * 1000
 }

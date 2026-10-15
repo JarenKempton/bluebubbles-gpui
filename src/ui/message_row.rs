@@ -1,36 +1,38 @@
 use std::sync::Arc;
 
-use gpui_kit::component::{StyledExt as _, theme::Theme};
-use gpui_kit::*;
+use gpui_kit::component::StyledExt as _;
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 
-use crate::{api::Attachment, media::Media};
+use crate::{api::Attachment, media::Media, omarchy::Palette};
 
-pub const BUBBLE_MAX_WIDTH: f32 = 460.;
+pub const BUBBLE_MAX_WIDTH: f32 = 480.;
+const BUBBLE_RADIUS: f32 = 18.;
 const IMAGE_MAX_WIDTH: f32 = 280.;
 const IMAGE_MAX_HEIGHT: f32 = 360.;
 
-pub fn outgoing_blue() -> Hsla {
-    rgb(0x0a84ff).into()
-}
-
-pub fn divider(label: String, theme: &Theme) -> Div {
+pub fn divider(label: String, p: &Palette) -> Div {
     div()
         .w_full()
         .pt_4()
         .pb_1()
-        .flex()
-        .justify_center()
+        .h_flex()
         .text_xs()
-        .text_color(theme.muted_foreground)
+        .justify_center()
+        .text_color(p.dim_foreground)
         .child(label)
 }
 
-pub fn sender(name: String, theme: &Theme) -> Div {
-    div().pl_3().pt_1().text_xs().text_color(theme.muted_foreground).child(name)
+pub fn sender(name: String, color: Hsla) -> Div {
+    div()
+        .pl_3()
+        .pb_0p5()
+        .text_xs()
+        .text_color(color)
+        .child(name)
 }
 
-pub fn system(text: String, theme: &Theme) -> Div {
+pub fn system(text: String, p: &Palette) -> Div {
     div()
         .w_full()
         .py_1()
@@ -38,31 +40,32 @@ pub fn system(text: String, theme: &Theme) -> Div {
         .justify_center()
         .text_xs()
         .italic()
-        .text_color(theme.muted_foreground)
+        .text_color(p.dim_foreground)
         .child(text)
 }
 
-pub fn bubble(text: String, outgoing: bool, failed: bool, theme: &Theme) -> Div {
+pub fn bubble(text: String, outgoing: bool, failed: bool, p: &Palette) -> Div {
     let (bg, fg) = match (outgoing, failed) {
-        (_, true) => (theme.danger, theme.danger_foreground),
-        (true, false) => (outgoing_blue(), gpui_kit::white()),
-        (false, false) => (theme.secondary, theme.secondary_foreground),
+        (_, true) => (p.red.opacity(0.2), p.red),
+        (true, false) => (p.message, p.bright_foreground),
+        (false, false) => (p.surface, p.foreground),
     };
     div()
         .max_w(px(BUBBLE_MAX_WIDTH))
         .px_3()
-        .py_1p5()
-        .rounded(px(18.))
+        .py(px(9.))
+        .line_height(rems(1.45))
+        .rounded(px(BUBBLE_RADIUS))
         .bg(bg)
         .text_color(fg)
         .text_sm()
         .child(text)
 }
 
-pub struct LoadedImage {
-    pub image: Option<Arc<Image>>,
-    pub dims: Option<Size<u32>>,
-    pub failed: bool,
+pub enum LoadedImage {
+    Loading,
+    Ready(Arc<Image>, Option<Size<u32>>),
+    Unavailable(&'static str),
 }
 
 pub fn image_size(attachment: &Attachment, loaded: Option<Size<u32>>) -> Size<Pixels> {
@@ -75,25 +78,48 @@ pub fn image_size(attachment: &Attachment, loaded: Option<Size<u32>>) -> Size<Pi
     size(px((w * scale).max(60.)), px((h * scale).max(60.)))
 }
 
-pub fn image(attachment: &Attachment, loaded: LoadedImage, theme: &Theme) -> Div {
-    let dims = image_size(attachment, loaded.dims);
-    let frame = div()
-        .w(dims.width)
-        .h(dims.height)
-        .rounded(px(16.))
-        .overflow_hidden()
-        .bg(theme.muted)
-        .cursor_pointer();
-    match loaded.image {
-        Some(image) => frame.child(img(ImageSource::Image(image)).size_full().object_fit(ObjectFit::Cover)),
-        None => frame.flex().items_center().justify_center().text_xs().text_color(theme.muted_foreground).child(
-            if loaded.failed { "Couldn't load image" } else { "Loading…" },
-        ),
+pub fn image(attachment: &Attachment, loaded: LoadedImage, p: &Palette) -> Div {
+    let frame = |dims: Size<Pixels>| {
+        div()
+            .w(dims.width)
+            .h(dims.height)
+            .rounded(px(BUBBLE_RADIUS))
+            .overflow_hidden()
+            .bg(p.lighter_background)
+    };
+    match loaded {
+        LoadedImage::Ready(image, dims) => {
+            frame(image_size(attachment, dims)).cursor_pointer().child(
+                img(ImageSource::Image(image))
+                    .size_full()
+                    .rounded(px(BUBBLE_RADIUS))
+                    .object_fit(ObjectFit::Cover),
+            )
+        }
+        LoadedImage::Loading => frame(image_size(attachment, None)),
+        LoadedImage::Unavailable(reason) => div()
+            .h_flex()
+            .gap_2()
+            .px_3()
+            .py_2()
+            .rounded(px(BUBBLE_RADIUS))
+            .border_1()
+            .border_color(p.muted)
+            .text_xs()
+            .text_color(p.dim_foreground)
+            .child(div().text_color(p.yellow).child("\u{f0c2}"))
+            .child(format!(
+                "{} — {reason}",
+                attachment.transfer_name.as_deref().unwrap_or("Image")
+            )),
     }
 }
 
-pub fn file(attachment: &Attachment, outgoing: bool, theme: &Theme) -> Div {
-    let name = attachment.transfer_name.clone().unwrap_or_else(|| "Attachment".to_string());
+pub fn file(attachment: &Attachment, p: &Palette) -> Div {
+    let name = attachment
+        .transfer_name
+        .clone()
+        .unwrap_or_else(|| "Attachment".to_string());
     let size = attachment.total_bytes.map(human_size).unwrap_or_default();
     div()
         .max_w(px(BUBBLE_MAX_WIDTH))
@@ -101,39 +127,56 @@ pub fn file(attachment: &Attachment, outgoing: bool, theme: &Theme) -> Div {
         .gap_2()
         .px_3()
         .py_2()
-        .rounded(px(14.))
+        .rounded(px(BUBBLE_RADIUS))
         .border_1()
-        .border_color(theme.border)
-        .when(outgoing, |el| el.bg(theme.secondary))
+        .border_color(p.muted)
         .cursor_pointer()
-        .child(div().text_sm().child("📎"))
-        .child(div().text_sm().truncate().child(name))
-        .child(div().text_xs().text_color(theme.muted_foreground).child(size))
+        .hover(|el| el.bg(p.foreground.opacity(0.06)))
+        .child(div().text_color(p.accent).child("\u{f0c6}"))
+        .child(
+            div()
+                .text_sm()
+                .text_color(p.bright_foreground)
+                .truncate()
+                .child(name),
+        )
+        .child(div().text_xs().text_color(p.dim_foreground).child(size))
 }
 
-pub fn reactions(emojis: Vec<&str>, theme: &Theme) -> Div {
+pub fn reactions(emojis: Vec<&str>, p: &Palette) -> Div {
     div()
+        .mt(px(-4.))
         .h_flex()
         .gap_0p5()
         .px_1p5()
-        .py_0p5()
+        .py(px(1.))
         .rounded_full()
-        .bg(theme.secondary)
-        .border_1()
-        .border_color(theme.background)
+        .bg(p.raised)
+        .border_2()
+        .border_color(p.background)
         .text_xs()
         .children(emojis.into_iter().map(|e| e.to_string()))
 }
 
-pub fn status(label: &'static str, theme: &Theme) -> Div {
-    div().pr_2().text_xs().text_color(theme.muted_foreground).child(label)
+pub fn status(label: &'static str, failed: bool, p: &Palette) -> Div {
+    div()
+        .w_full()
+        .flex()
+        .justify_end()
+        .pt_1()
+        .pr_1()
+        .text_xs()
+        .text_color(if failed { p.red } else { p.dim_foreground })
+        .when(failed, |el| el.font_weight(FontWeight::BOLD))
+        .child(label)
 }
 
 pub fn media_state(media: &Media) -> LoadedImage {
     match media {
-        Media::Ready(image, dims) => LoadedImage { image: Some(image.clone()), dims: *dims, failed: false },
-        Media::Loading => LoadedImage { image: None, dims: None, failed: false },
-        Media::Failed => LoadedImage { image: None, dims: None, failed: true },
+        Media::Ready(image, dims) => LoadedImage::Ready(image.clone(), *dims),
+        Media::Loading => LoadedImage::Loading,
+        Media::NotOnMac => LoadedImage::Unavailable("only in iCloud, not on your Mac"),
+        Media::Failed => LoadedImage::Unavailable("couldn't load"),
     }
 }
 
