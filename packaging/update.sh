@@ -7,12 +7,12 @@ bin_dir="$HOME/.local/bin"
 data_dir="$HOME/.local/share/bluebubbles-gpui"
 installed="$(cat "$data_dir/VERSION" 2>/dev/null || true)"
 
-latest="$("$gh" release view main --repo "$repo" --json name --jq .name)"
+latest="$("$gh" release view main-build --repo "$repo" --json name --jq .name 2>/dev/null)" || exit 0
 [ -n "$latest" ] && [ "$latest" != "$installed" ] || exit 0
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-"$gh" release download main --repo "$repo" --pattern 'bluebubbles-gpui-x86_64-linux.tar.gz' --dir "$work"
+"$gh" release download main-build --repo "$repo" --pattern 'bluebubbles-gpui-x86_64-linux.tar.gz' --dir "$work"
 tar -xzf "$work/bluebubbles-gpui-x86_64-linux.tar.gz" -C "$work"
 pkg="$work/bluebubbles-gpui"
 [ "$(cat "$pkg/VERSION")" = "$latest" ] || { echo "version mismatch in download" >&2; exit 1; }

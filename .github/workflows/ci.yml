@@ -53,7 +53,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete main --cleanup-tag --yes || true
-          gh release create main bluebubbles-gpui-x86_64-linux.tar.gz \
+          gh release delete main-build --cleanup-tag --yes || true
+          gh release create main-build bluebubbles-gpui-x86_64-linux.tar.gz \
             --target "$GITHUB_SHA" --title "$GITHUB_SHA" --latest \
             --notes "Built from $GITHUB_SHA"
