@@ -1,35 +1,43 @@
 use std::sync::Arc;
 
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::{api::Attachment, media::Media, omarchy::Palette};
 
-pub const BUBBLE_MAX_WIDTH: f32 = 480.;
-const BUBBLE_RADIUS: f32 = 18.;
+const TEXT_MAX_WIDTH: f32 = 640.;
+const CARD_MAX_WIDTH: f32 = 540.;
+const RADIUS: f32 = 12.;
 const IMAGE_MAX_WIDTH: f32 = 280.;
 const IMAGE_MAX_HEIGHT: f32 = 360.;
 
 pub fn divider(label: String, p: &Palette) -> Div {
+    let rule = || div().flex_1().h(px(1.)).bg(p.muted);
     div()
         .w_full()
-        .pt_4()
+        .pt_2()
         .pb_1()
         .h_flex()
+        .gap_3()
         .text_xs()
-        .justify_center()
         .text_color(p.dim_foreground)
+        .child(rule())
         .child(label)
+        .child(rule())
 }
 
-pub fn sender(name: String, color: Hsla) -> Div {
+pub fn meta(name: String, time: String, p: &Palette) -> Div {
     div()
-        .pl_3()
-        .pb_0p5()
-        .text_xs()
-        .text_color(color)
-        .child(name)
+        .h_flex()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(p.foreground)
+                .child(name),
+        )
+        .child(div().text_xs().text_color(p.dim_foreground).child(time))
 }
 
 pub fn system(text: String, p: &Palette) -> Div {
@@ -44,21 +52,32 @@ pub fn system(text: String, p: &Palette) -> Div {
         .child(text)
 }
 
-pub fn bubble(text: String, outgoing: bool, failed: bool, p: &Palette) -> Div {
-    let (bg, fg) = match (outgoing, failed) {
-        (_, true) => (p.red.opacity(0.2), p.red),
-        (true, false) => (p.message, p.bright_foreground),
-        (false, false) => (p.surface, p.foreground),
+pub fn text(text: String, p: &Palette) -> Div {
+    div()
+        .max_w(px(TEXT_MAX_WIDTH))
+        .text_sm()
+        .line_height(px(22.))
+        .text_color(p.foreground)
+        .child(text)
+}
+
+pub fn card(text: String, failed: bool, p: &Palette) -> Div {
+    let (bg, border, fg) = if failed {
+        (p.red.opacity(0.12), p.red.opacity(0.4), p.red)
+    } else {
+        (p.surface, p.muted, p.foreground)
     };
     div()
-        .max_w(px(BUBBLE_MAX_WIDTH))
+        .max_w(px(CARD_MAX_WIDTH))
         .px_3()
-        .py(px(9.))
-        .line_height(rems(1.45))
-        .rounded(px(BUBBLE_RADIUS))
+        .py(px(7.))
+        .rounded(px(RADIUS))
+        .border_1()
+        .border_color(border)
         .bg(bg)
-        .text_color(fg)
         .text_sm()
+        .line_height(px(22.))
+        .text_color(fg)
         .child(text)
 }
 
@@ -83,7 +102,7 @@ pub fn image(attachment: &Attachment, loaded: LoadedImage, p: &Palette) -> Div {
         div()
             .w(dims.width)
             .h(dims.height)
-            .rounded(px(BUBBLE_RADIUS))
+            .rounded(px(RADIUS))
             .overflow_hidden()
             .bg(p.lighter_background)
     };
@@ -92,7 +111,7 @@ pub fn image(attachment: &Attachment, loaded: LoadedImage, p: &Palette) -> Div {
             frame(image_size(attachment, dims)).cursor_pointer().child(
                 img(ImageSource::Image(image))
                     .size_full()
-                    .rounded(px(BUBBLE_RADIUS))
+                    .rounded(px(RADIUS))
                     .object_fit(ObjectFit::Cover),
             )
         }
@@ -102,7 +121,7 @@ pub fn image(attachment: &Attachment, loaded: LoadedImage, p: &Palette) -> Div {
             .gap_2()
             .px_3()
             .py_2()
-            .rounded(px(BUBBLE_RADIUS))
+            .rounded(px(RADIUS))
             .border_1()
             .border_color(p.muted)
             .text_xs()
@@ -122,12 +141,12 @@ pub fn file(attachment: &Attachment, p: &Palette) -> Div {
         .unwrap_or_else(|| "Attachment".to_string());
     let size = attachment.total_bytes.map(human_size).unwrap_or_default();
     div()
-        .max_w(px(BUBBLE_MAX_WIDTH))
+        .max_w(px(CARD_MAX_WIDTH))
         .h_flex()
         .gap_2()
         .px_3()
         .py_2()
-        .rounded(px(BUBBLE_RADIUS))
+        .rounded(px(RADIUS))
         .border_1()
         .border_color(p.muted)
         .cursor_pointer()
@@ -145,29 +164,26 @@ pub fn file(attachment: &Attachment, p: &Palette) -> Div {
 
 pub fn reactions(emojis: Vec<&str>, p: &Palette) -> Div {
     div()
-        .mt(px(-4.))
+        .h(px(22.))
+        .px_2()
         .h_flex()
-        .gap_0p5()
-        .px_1p5()
-        .py(px(1.))
+        .gap_1()
         .rounded_full()
-        .bg(p.raised)
-        .border_2()
-        .border_color(p.background)
+        .border_1()
+        .border_color(p.muted)
         .text_xs()
+        .text_color(p.dim_foreground)
         .children(emojis.into_iter().map(|e| e.to_string()))
 }
 
-pub fn status(label: &'static str, failed: bool, p: &Palette) -> Div {
+pub fn status(label: String, failed: bool, p: &Palette) -> Div {
     div()
         .w_full()
         .flex()
         .justify_end()
         .pt_1()
-        .pr_1()
         .text_xs()
         .text_color(if failed { p.red } else { p.dim_foreground })
-        .when(failed, |el| el.font_weight(FontWeight::BOLD))
         .child(label)
 }
 

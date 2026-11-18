@@ -288,22 +288,9 @@ impl MainView {
             }
             return;
         }
-        let subtitle: SharedString = if entry.chat.is_group() {
-            format!("{} people", entry.chat.participants.len() + 1).into()
-        } else {
-            entry
-                .chat
-                .participants
-                .first()
-                .map(|p| crate::contacts::format_address(&p.address))
-                .unwrap_or_default()
-                .into()
-        };
         let header = ThreadHeader {
             title: entry.title.clone(),
-            subtitle,
             is_group: entry.chat.is_group(),
-            faces: entry.faces.clone(),
         };
         let (client, media, contacts) = (
             self.client.clone(),
@@ -441,16 +428,8 @@ impl MainView {
             .filter_map(|ix| {
                 let entry = self.entries.get(*self.visible.get(ix)?)?;
                 let selected = self.selected.as_deref() == Some(entry.chat.guid.as_str());
-                let icon = entry
-                    .chat
-                    .is_group()
-                    .then(|| {
-                        self.media
-                            .update(cx, |m, cx| m.group_icon(&entry.chat.guid, cx))
-                    })
-                    .flatten();
                 Some(
-                    chat_list::row(entry, icon, selected, cx)
+                    chat_list::row(entry, selected, cx)
                         .id(ix)
                         .on_click(
                             cx.listener(move |this, _, window, cx| this.select(ix, window, cx)),
@@ -464,17 +443,20 @@ impl MainView {
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx).clone();
         div()
-            .w(px(300.))
+            .w(px(264.))
             .flex_none()
             .h_full()
             .v_flex()
             .bg(p.sidebar)
+            .border_r_1()
+            .border_color(p.muted)
             .text_color(p.foreground)
             .child(
                 div()
                     .h(px(48.))
                     .flex_none()
-                    .px_4()
+                    .pl_4()
+                    .pr_3()
                     .h_flex()
                     .gap_2()
                     .child(
@@ -507,23 +489,33 @@ impl MainView {
                     ),
             )
             .child(
-                div().px_2().pb_2().child(
+                div().px_3().pb_2().child(
                     div()
-                        .h(px(36.))
-                        .px(px(10.))
+                        .h(px(30.))
+                        .pl_2()
+                        .pr(px(6.))
                         .h_flex()
-                        .gap_2p5()
-                        .rounded(px(8.))
-                        .hover(|el| el.bg(p.row_hover))
+                        .gap_2()
+                        .rounded(px(6.))
+                        .border_1()
+                        .border_color(p.muted)
                         .child(
                             Icon::new(IconName::Search)
-                                .small()
+                                .xsmall()
                                 .text_color(p.dim_foreground),
                         )
                         .child(
                             div()
                                 .flex_1()
+                                .text_sm()
                                 .child(Input::new(&self.search).appearance(false).cleanable(true)),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_xs()
+                                .text_color(p.dim_foreground)
+                                .child("Ctrl K"),
                         ),
                 ),
             )
@@ -536,6 +528,7 @@ impl MainView {
                 uniform_list("chats", self.visible.len(), cx.processor(Self::render_rows))
                     .track_scroll(&self.list_scroll)
                     .px_2()
+                    .pt_1()
                     .flex_1(),
             )
     }

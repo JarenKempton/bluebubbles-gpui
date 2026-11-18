@@ -3,7 +3,6 @@ mod config;
 mod contacts;
 mod live;
 mod media;
-mod oklch;
 mod omarchy;
 mod runtime;
 mod self_update;

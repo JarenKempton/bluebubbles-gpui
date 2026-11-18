@@ -150,8 +150,6 @@ pub struct Contact {
     pub phone_numbers: Vec<ContactAddress>,
     #[serde(default)]
     pub emails: Vec<ContactAddress>,
-    #[serde(default)]
-    pub avatar: Option<String>,
 }
 
 impl Contact {

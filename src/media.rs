@@ -15,7 +15,6 @@ pub enum Media {
 #[derive(Clone)]
 enum Source {
     Attachment(String),
-    GroupIcon(String),
 }
 
 pub struct MediaCache {
@@ -40,17 +39,6 @@ impl MediaCache {
             .insert(guid.to_string(), Media::Ready(image, dims));
     }
 
-    pub fn group_icon(&mut self, chat_guid: &str, cx: &mut Context<Self>) -> Option<Arc<Image>> {
-        match self.get(
-            format!("icon:{chat_guid}"),
-            Source::GroupIcon(chat_guid.to_string()),
-            cx,
-        ) {
-            Media::Ready(image, _) => Some(image.clone()),
-            _ => None,
-        }
-    }
-
     fn get(&mut self, key: String, source: Source, cx: &mut Context<Self>) -> &Media {
         if !self.images.contains_key(&key) {
             self.images.insert(key.clone(), Media::Loading);
@@ -65,7 +53,6 @@ impl MediaCache {
             let result = runtime::run(async move {
                 let bytes = match source {
                     Source::Attachment(guid) => client.attachment(&guid, Some(800)).await?,
-                    Source::GroupIcon(chat) => client.group_icon(&chat).await?,
                 };
                 let dims = imagesize::blob_size(&bytes)
                     .ok()
