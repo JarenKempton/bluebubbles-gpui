@@ -2,7 +2,6 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-gh_path="$(command -v gh)"
 units="$HOME/.config/systemd/user"
 
 mkdir -p "$HOME/.local/bin" "$units"
@@ -14,7 +13,6 @@ Description=Install the latest bluebubbles-gpui build from GitHub
 
 [Service]
 Type=oneshot
-Environment=BLUEBUBBLES_GPUI_GH=$gh_path
 ExecStart=%h/.local/bin/bluebubbles-gpui-update
 UNIT
 
