@@ -1,8 +1,8 @@
 use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use gpui_kit::component::{
-    Disableable as _, Icon, IconName, Sizable as _, StyledExt as _,
-    button::{Button, ButtonRounded, ButtonVariants as _},
+    Icon, IconName, Sizable as _, StyledExt as _,
+    button::{Button, ButtonVariants as _},
     input::{InputEvent, Textarea, TextareaState},
     message_scroller::{MessageScroller, MessageScrollerState},
 };
@@ -16,8 +16,6 @@ use crate::{
     omarchy::{Palette, palette},
     runtime,
     ui::{
-        avatar::{self, Face},
-        chat_list::face_for,
         draft::{self, Draft},
         message_row as row,
         reactions::Reactions,
@@ -27,13 +25,11 @@ use crate::{
 
 pub struct ThreadHeader {
     pub title: SharedString,
-    pub subtitle: SharedString,
     pub is_group: bool,
-    pub faces: Vec<Face>,
 }
 
 const PAGE: usize = 50;
-const COLUMN_WIDTH: f32 = 800.;
+const COLUMN_WIDTH: f32 = 820.;
 
 pub enum ThreadEvent {
     Sent(Message),
@@ -240,6 +236,12 @@ impl ThreadView {
         });
         if let Some(prev) = previous_outgoing.filter(|p| *p < ix) {
             self.remeasure(prev, cx);
+        }
+        if let Some(prev) = ix.checked_sub(1) {
+            self.remeasure(prev, cx);
+        }
+        if ix + 1 < self.rows.len() {
+            self.remeasure(ix + 1, cx);
         }
         cx.notify();
     }
@@ -458,17 +460,20 @@ impl ThreadView {
         let last_outgoing = outgoing && !self.rows[i + 1..].iter().any(|r| r.msg.is_from_me);
 
         let new_section = time::needs_divider(previous.map(|p| p.date_created), msg.date_created);
-        let continues = !new_section
-            && previous.is_some_and(|prev| {
-                prev.item_type == 0
-                    && prev.is_from_me == msg.is_from_me
-                    && (outgoing || sender_of(prev) == sender_of(msg))
-            });
+        let same_run = |other: &Message| {
+            other.item_type == 0
+                && other.is_from_me == outgoing
+                && (outgoing || sender_of(other) == sender_of(msg))
+        };
+        let first_in_run = new_section || previous.is_none_or(|prev| !same_run(prev));
+        let last_in_run = next.is_none_or(|n| {
+            !same_run(n) || time::needs_divider(Some(msg.date_created), n.date_created)
+        });
         let mut column = div()
             .w_full()
             .v_flex()
-            .px_6()
-            .pt(px(if continues { 3. } else { 12. }));
+            .px_8()
+            .pt(px(if first_in_run { 20. } else { 4. }));
         if new_section {
             column = column.child(row::divider(time::divider(msg.date_created), &p));
         }
@@ -480,28 +485,21 @@ impl ThreadView {
             };
             return column.child(row::system(text, &p)).into_any_element();
         }
-        let same_run = |other: &Message| {
-            !other.is_from_me && other.item_type == 0 && sender_of(other) == sender_of(msg)
-        };
-        let first_in_run = new_section || previous.is_none_or(|prev| !same_run(prev));
-        let last_in_run = next.is_none_or(|n| {
-            !same_run(n) || time::needs_divider(Some(msg.date_created), n.date_created)
-        });
-        let gutter = self.header.is_group && !outgoing;
-        let sender = sender_of(msg);
-        let face = face_for(&sender, &self.contacts);
-        let tint_name = self.contacts.display(&sender);
-
         let align = |el: Div| {
             if outgoing {
-                el.justify_end()
+                el.items_end()
             } else {
-                el.justify_start()
+                el.items_start()
             }
         };
-        let mut content = div().flex_1().min_w_0().v_flex().gap(px(3.));
-        if gutter && first_in_run {
-            content = content.child(row::sender(tint_name.clone(), p.dim_foreground));
+        let mut content = align(div().w_full().v_flex().gap_1());
+        if !outgoing && first_in_run {
+            let name = if self.header.is_group {
+                self.contacts.display(&sender_of(msg))
+            } else {
+                self.header.title.to_string()
+            };
+            content = content.child(row::meta(name, time::clock(msg.date_created), &p));
         }
         for attachment in msg.visible_attachments() {
             let element = if attachment.is_image() {
@@ -514,79 +512,43 @@ impl ThreadView {
             };
             let attachment = attachment.clone();
             content = content.child(
-                align(div().w_full().flex()).child(
-                    element
-                        .id(SharedString::from(format!("att-{}", attachment.guid)))
-                        .on_click(
-                            cx.listener(move |this, _, _, _| this.open_attachment(&attachment)),
-                        ),
-                ),
+                element
+                    .id(SharedString::from(format!("att-{}", attachment.guid)))
+                    .on_click(cx.listener(move |this, _, _, _| this.open_attachment(&attachment))),
             );
         }
+        let mut emojis = self.reactions.for_message(&msg.guid);
         if !msg.body().is_empty() {
-            let bubble = row::bubble(
-                msg.body().to_string(),
-                outgoing,
-                current.failure.is_some(),
-                &p,
-            )
-            .when(current.pending, |el| el.opacity(0.6));
-            content = content.child(align(div().w_full().flex()).child(bubble));
+            let text = msg.body().to_string();
+            let body = if outgoing {
+                row::card(text, current.failure.is_some(), &p)
+            } else {
+                row::text(text, std::mem::take(&mut emojis), &p)
+            };
+            content = content.child(body.when(current.pending, |el| el.opacity(0.6)));
         }
-        let emojis = self.reactions.for_message(&msg.guid);
         if !emojis.is_empty() {
-            content = content
-                .child(align(div().w_full().flex().px_2()).child(row::reactions(emojis, &p)));
+            content = content.child(row::reactions(emojis));
         }
-
-        column = if gutter {
-            let slot = div().w(px(28.)).flex_none().when(last_in_run, |el| {
-                el.child(avatar::face(
-                    &Face {
-                        name: tint_name.into(),
-                        image: face.image,
-                    },
-                    px(28.),
-                    cx,
-                ))
-            });
-            column.child(
-                div()
-                    .w_full()
-                    .h_flex()
-                    .items_end()
-                    .gap_2p5()
-                    .child(slot)
-                    .child(content),
-            )
-        } else {
-            column.child(content)
-        };
+        column = column.child(content);
 
         if let Some(failure) = &current.failure {
-            column = column.child(
-                div()
-                    .w_full()
-                    .flex()
-                    .justify_end()
-                    .pt_0p5()
-                    .text_xs()
-                    .text_color(p.red)
-                    .child(format!("Not delivered — {failure}")),
-            );
+            column = column.child(row::status(format!("Not delivered: {failure}"), true, &p));
         } else if last_outgoing {
             let (label, failed) = if current.pending {
-                ("Sending…", false)
+                ("Sending…".to_string(), false)
             } else if msg.error != 0 {
-                ("Not delivered", true)
-            } else if msg.date_read.is_some() {
-                ("Read", false)
+                ("Not delivered".to_string(), true)
+            } else if let Some(read) = msg.date_read {
+                (format!("Read {}", time::clock(read)), false)
             } else if msg.date_delivered.is_some() || msg.is_delivered {
-                ("Delivered", false)
+                ("Delivered".to_string(), false)
             } else {
-                ("Sent", false)
+                ("Sent".to_string(), false)
             };
             column = column.child(row::status(label, failed, &p));
+        } else if outgoing && last_in_run {
+            column = column.child(row::status(time::clock(msg.date_created), false, &p));
         }
         column.into_any_element()
     }
@@ -689,50 +651,65 @@ impl ThreadView {
                     )
                 }))
         });
-        let round = |id: &'static str, icon: IconName| {
-            Button::new(id)
-                .icon(Icon::new(icon).small())
-                .rounded(ButtonRounded::Size(px(16.)))
-                .with_size(px(32.))
-        };
         div()
             .flex_none()
             .w_full()
             .flex()
             .justify_center()
-            .px_4()
-            .pt_2()
-            .pb_4()
+            .px_8()
+            .pb_5()
             .child(
                 div()
                     .w_full()
-                    .max_w(px(COLUMN_WIDTH - 32.))
+                    .max_w(px(COLUMN_WIDTH - 64.))
                     .v_flex()
-                    .px_2()
-                    .pt_2()
-                    .pb_2()
-                    .rounded(px(22.))
-                    .bg(p.raised)
-                    .when_some(tray, |el, tray| el.child(div().px_2().pt_1().child(tray)))
-                    .when_some(self.composer_error.clone(), |el, err| {
-                        el.child(div().px_2().pb_1().text_xs().text_color(p.red).child(err))
+                    .rounded(px(14.))
+                    .border_1()
+                    .border_color(p.muted)
+                    .bg(p.surface)
+                    .when_some(tray, |el, tray| {
+                        el.child(div().px(px(20.)).pt_3().child(tray))
                     })
+                    .when_some(self.composer_error.clone(), |el, err| {
+                        el.child(
+                            div()
+                                .px(px(20.))
+                                .pt_2()
+                                .text_xs()
+                                .text_color(p.red)
+                                .child(err),
+                        )
+                    })
+                    .child(div().px(px(9.)).pt_3().text_sm().child(input))
                     .child(
                         div()
+                            .h(px(48.))
+                            .px(px(10.))
                             .h_flex()
-                            .items_end()
-                            .gap_2()
+                            .gap_1()
                             .child(
-                                round("attach", IconName::Plus)
+                                Button::new("attach")
+                                    .icon(Icon::new(IconName::Plus).small())
+                                    .label("Attach")
                                     .ghost()
+                                    .small()
                                     .tooltip("Attach files")
                                     .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx))),
                             )
-                            .child(div().flex_1().child(input))
+                            .child(div().flex_1())
                             .child(
-                                round("send", IconName::ArrowUp)
-                                    .info()
-                                    .disabled(!can_send)
+                                div()
+                                    .id("send")
+                                    .size(px(28.))
+                                    .rounded(px(8.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .bg(p.foreground)
+                                    .text_color(p.background)
+                                    .opacity(if can_send { 1. } else { 0.35 })
+                                    .when(can_send, |el| el.cursor_pointer())
+                                    .child(Icon::new(IconName::ArrowUp).small())
                                     .on_click(
                                         cx.listener(|this, _, window, cx| this.send(window, cx)),
                                     ),
@@ -746,31 +723,12 @@ impl Render for ThreadView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
         let p = palette(cx).clone();
-        let icon = self
-            .header
-            .is_group
-            .then(|| {
-                self.media
-                    .update(cx, |m, cx| m.group_icon(&self.chat_guid, cx))
-            })
-            .flatten();
-        let header_avatar = if self.header.is_group {
-            avatar::group(&self.header.faces, icon, px(26.), p.background, cx)
-        } else {
-            let fallback = Face {
-                name: self.header.title.clone(),
-                image: None,
-            };
-            avatar::face(
-                self.header
-                    .faces
-                    .first()
-                    .filter(|f| f.image.is_some())
-                    .unwrap_or(&fallback),
-                px(26.),
-                cx,
-            )
-        };
+        let service = self
+            .chat_guid
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .to_string();
         div()
             .id("thread")
             .size_full()
@@ -784,23 +742,25 @@ impl Render for ThreadView {
                 div()
                     .flex_none()
                     .h(px(48.))
-                    .px_4()
+                    .px_5()
                     .h_flex()
-                    .gap_2p5()
-                    .child(header_avatar)
+                    .gap_2()
+                    .border_b_1()
+                    .border_color(p.muted)
+                    .text_sm()
                     .child(
                         div()
-                            .text_sm()
+                            .min_w_0()
+                            .truncate()
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(p.bright_foreground)
+                            .text_color(p.foreground)
                             .child(self.header.title.clone()),
                     )
-                    .child(div().text_sm().text_color(p.dim_foreground).child("/"))
                     .child(
                         div()
-                            .text_sm()
+                            .flex_none()
                             .text_color(p.dim_foreground)
-                            .child(self.header.subtitle.clone()),
+                            .child(service),
                     ),
             )
             .child(

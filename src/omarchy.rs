@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 
-use gpui_kit::component::theme::{Theme, ThemeRegistry};
+use gpui_kit::component::theme::{Theme, ThemeMode, ThemeRegistry};
 use gpui_kit::*;
-
-use crate::oklch::Ramp;
 
 const THEME_NAME: &str = "Omarchy";
 
@@ -18,20 +16,17 @@ pub struct Palette {
     pub bright_foreground: Hsla,
     pub red: Hsla,
     pub yellow: Hsla,
-    pub identity: [Hsla; 6],
     pub sidebar: Hsla,
     pub row_hover: Hsla,
     pub row_selected: Hsla,
     pub surface: Hsla,
     pub raised: Hsla,
-    pub message: Hsla,
 }
 
 impl Global for Palette {}
 
 impl Palette {
     fn from_theme(theme: &Theme) -> Self {
-        let ramp = Ramp::new(theme.background, theme.primary, theme.mode.is_dark());
         Self {
             accent: theme.primary,
             background: theme.background,
@@ -42,20 +37,11 @@ impl Palette {
             bright_foreground: theme.accent_foreground,
             red: theme.red,
             yellow: theme.yellow,
-            identity: [
-                theme.blue,
-                theme.magenta,
-                theme.cyan,
-                theme.green,
-                theme.yellow,
-                theme.red,
-            ],
             sidebar: theme.sidebar,
             row_hover: theme.list_hover,
             row_selected: theme.list_active,
             surface: theme.secondary,
             raised: theme.popover,
-            message: ramp.surface(0.16, 0.6, 0.13),
         }
     }
 }
@@ -68,6 +54,7 @@ pub fn themes_dir() -> PathBuf {
 }
 
 pub fn init(cx: &mut App) {
+    Theme::change(ThemeMode::Dark, None, cx);
     cx.set_global(Palette::from_theme(Theme::global(cx)));
     cx.observe_global::<Theme>(|cx| {
         let palette = Palette::from_theme(Theme::global(cx));

@@ -1,4 +1,3 @@
-mod avatar;
 mod chat_list;
 mod connect;
 mod draft;

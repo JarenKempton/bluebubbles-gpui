@@ -1,14 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use base64::Engine as _;
-use gpui_kit::Image;
-
-use crate::{api::Contact, media::decode_image};
+use crate::api::Contact;
 
 #[derive(Default)]
 pub struct ContactBook {
     names: HashMap<String, String>,
-    avatars: HashMap<String, Arc<Image>>,
 }
 
 impl ContactBook {
@@ -16,23 +12,12 @@ impl ContactBook {
         let mut book = Self::default();
         for contact in contacts {
             let Some(name) = contact.name() else { continue };
-            let avatar = contact
-                .avatar
-                .as_deref()
-                .filter(|data| !data.is_empty())
-                .and_then(|data| base64::engine::general_purpose::STANDARD.decode(data).ok())
-                .and_then(decode_image);
             for address in contact.phone_numbers.iter().chain(&contact.emails) {
                 let key = key(&address.address);
                 if key.is_empty() {
                     continue;
                 }
-                book.names
-                    .entry(key.clone())
-                    .or_insert_with(|| name.clone());
-                if let Some(avatar) = &avatar {
-                    book.avatars.entry(key).or_insert_with(|| avatar.clone());
-                }
+                book.names.entry(key).or_insert_with(|| name.clone());
             }
         }
         book
@@ -40,10 +25,6 @@ impl ContactBook {
 
     pub fn name(&self, address: &str) -> Option<&str> {
         self.names.get(&key(address)).map(String::as_str)
-    }
-
-    pub fn avatar(&self, address: &str) -> Option<Arc<Image>> {
-        self.avatars.get(&key(address)).cloned()
     }
 
     pub fn display(&self, address: &str) -> String {

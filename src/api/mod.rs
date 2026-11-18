@@ -143,13 +143,7 @@ impl Client {
     }
 
     pub async fn contacts(&self) -> Result<Vec<Contact>> {
-        self.get("contact", &[("extraProperties", "avatar".to_string())])
-            .await
-    }
-
-    pub async fn group_icon(&self, chat_guid: &str) -> Result<Vec<u8>> {
-        self.download(&format!("chat/{}/icon", encode(chat_guid)), &[])
-            .await
+        self.get("contact", &[]).await
     }
 
     pub async fn attachment(&self, guid: &str, max_width: Option<u32>) -> Result<Vec<u8>> {

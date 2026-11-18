@@ -5,6 +5,7 @@ use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenuItem},
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -14,7 +15,7 @@ use crate::{
     contacts::ContactBook,
     live::{self, LiveEvent},
     media::MediaCache,
-    omarchy::palette,
+    omarchy::{Palette, palette},
     runtime,
     self_update::InstalledBinary,
     ui::{
@@ -288,22 +289,9 @@ impl MainView {
             }
             return;
         }
-        let subtitle: SharedString = if entry.chat.is_group() {
-            format!("{} people", entry.chat.participants.len() + 1).into()
-        } else {
-            entry
-                .chat
-                .participants
-                .first()
-                .map(|p| crate::contacts::format_address(&p.address))
-                .unwrap_or_default()
-                .into()
-        };
         let header = ThreadHeader {
             title: entry.title.clone(),
-            subtitle,
             is_group: entry.chat.is_group(),
-            faces: entry.faces.clone(),
         };
         let (client, media, contacts) = (
             self.client.clone(),
@@ -441,16 +429,8 @@ impl MainView {
             .filter_map(|ix| {
                 let entry = self.entries.get(*self.visible.get(ix)?)?;
                 let selected = self.selected.as_deref() == Some(entry.chat.guid.as_str());
-                let icon = entry
-                    .chat
-                    .is_group()
-                    .then(|| {
-                        self.media
-                            .update(cx, |m, cx| m.group_icon(&entry.chat.guid, cx))
-                    })
-                    .flatten();
                 Some(
-                    chat_list::row(entry, icon, selected, cx)
+                    chat_list::row(entry, selected, cx)
                         .id(ix)
                         .on_click(
                             cx.listener(move |this, _, window, cx| this.select(ix, window, cx)),
@@ -464,11 +444,13 @@ impl MainView {
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx).clone();
         div()
-            .w(px(300.))
+            .w(px(264.))
             .flex_none()
             .h_full()
             .v_flex()
             .bg(p.sidebar)
+            .border_r_1()
+            .border_color(p.muted)
             .text_color(p.foreground)
             .child(
                 div()
@@ -476,56 +458,28 @@ impl MainView {
                     .flex_none()
                     .px_4()
                     .h_flex()
-                    .gap_2()
+                    .gap_2p5()
+                    .border_b_1()
+                    .border_color(p.muted)
+                    .child(
+                        Icon::new(IconName::Search)
+                            .small()
+                            .text_color(p.dim_foreground),
+                    )
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Messages"),
+                            .child(Input::new(&self.search).appearance(false).cleanable(true)),
                     )
-                    .when(self.link == Link::Offline, |el| {
-                        el.child(div().text_xs().text_color(p.red).child("Offline"))
-                    })
-                    .child(div().flex_1())
-                    .when(self.update_ready, |el| {
-                        el.child(
-                            Button::new("restart")
-                                .label("Update ready")
-                                .primary()
-                                .xsmall()
-                                .tooltip("Restart into the new build")
-                                .on_click(cx.listener(|this, _, _, cx| this.restart(cx))),
-                        )
-                    })
                     .child(
-                        Button::new("sign-out")
-                            .label("Sign out")
-                            .ghost()
-                            .xsmall()
-                            .tooltip("Forget this server")
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SignedOut))),
+                        div()
+                            .flex_none()
+                            .text_xs()
+                            .text_color(p.dim_foreground)
+                            .child("Ctrl K"),
                     ),
-            )
-            .child(
-                div().px_2().pb_2().child(
-                    div()
-                        .h(px(36.))
-                        .px(px(10.))
-                        .h_flex()
-                        .gap_2p5()
-                        .rounded(px(8.))
-                        .hover(|el| el.bg(p.row_hover))
-                        .child(
-                            Icon::new(IconName::Search)
-                                .small()
-                                .text_color(p.dim_foreground),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .child(Input::new(&self.search).appearance(false).cleanable(true)),
-                        ),
-                ),
             )
             .children(
                 self.load_error
@@ -536,9 +490,69 @@ impl MainView {
                 uniform_list("chats", self.visible.len(), cx.processor(Self::render_rows))
                     .track_scroll(&self.list_scroll)
                     .px_2()
+                    .pt_2()
                     .flex_1(),
             )
+            .child(self.render_account(&p, cx))
     }
+
+    fn render_account(&self, p: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
+        let host: SharedString = server_host(self.client.root()).into();
+        let label: SharedString = match (self.link, self.update_ready) {
+            (Link::Offline, _) => "Reconnecting…".into(),
+            (_, true) => "Update ready".into(),
+            _ => host.clone(),
+        };
+        let status: SharedString = match self.link {
+            Link::Online => "Connected".into(),
+            Link::Connecting => "Connecting…".into(),
+            Link::Offline => "Offline, reconnecting".into(),
+        };
+        let update_ready = self.update_ready;
+        let view = cx.entity().downgrade();
+        div()
+            .h(px(48.))
+            .flex_none()
+            .px(px(6.))
+            .h_flex()
+            .border_t_1()
+            .border_color(p.muted)
+            .child(
+                Button::new("account")
+                    .ghost()
+                    .h(px(32.))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(p.dim_foreground)
+                            .truncate()
+                            .child(label),
+                    )
+                    .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                        let (restart, sign_out) = (view.clone(), view.clone());
+                        menu.label(host.clone())
+                            .label(status.clone())
+                            .separator()
+                            .when(update_ready, |menu| {
+                                menu.item(PopupMenuItem::new("Restart to update").on_click(
+                                    move |_, _, cx| {
+                                        restart.update(cx, |this, cx| this.restart(cx)).ok();
+                                    },
+                                ))
+                            })
+                            .item(PopupMenuItem::new("Sign out").on_click(move |_, _, cx| {
+                                sign_out.update(cx, |_, cx| cx.emit(SignedOut)).ok();
+                            }))
+                    }),
+            )
+    }
+}
+
+fn server_host(root: &str) -> String {
+    reqwest::Url::parse(root)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .unwrap_or_else(|| root.to_string())
 }
 
 impl Render for MainView {
