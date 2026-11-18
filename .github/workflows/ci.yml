@@ -17,7 +17,14 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,16 +51,32 @@ jobs:
         run: |
           cargo build --release
           mkdir -p dist/bluebubbles-gpui
-          cp target/release/bluebubbles-gpui packaging/bluebubbles-gpui.desktop packaging/bluebubbles-gpui.svg dist/bluebubbles-gpui/
+          cp target/release/bluebubbles-gpui packaging/update.sh packaging/bluebubbles-gpui.desktop packaging/bluebubbles-gpui.svg dist/bluebubbles-gpui/
           echo "$GITHUB_SHA" > dist/bluebubbles-gpui/VERSION
-          tar -C dist -czf bluebubbles-gpui-x86_64-linux.tar.gz bluebubbles-gpui
+          tar -C dist -czf bluebubbles-gpui-${{ matrix.arch }}-linux.tar.gz bluebubbles-gpui
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: bluebubbles-gpui-${{ matrix.arch }}
+          path: bluebubbles-gpui-${{ matrix.arch }}-linux.tar.gz
+
+  publish:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
 
       - name: Publish rolling release
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          echo "$GITHUB_SHA" > VERSION
           gh release delete main-build --cleanup-tag --yes || true
-          gh release create main-build bluebubbles-gpui-x86_64-linux.tar.gz \
+          gh release create main-build bluebubbles-gpui-*-linux.tar.gz VERSION \
             --target "$GITHUB_SHA" --title "$GITHUB_SHA" --latest \
             --notes "Built from $GITHUB_SHA"
