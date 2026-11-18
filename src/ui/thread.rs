@@ -517,18 +517,18 @@ impl ThreadView {
                     .on_click(cx.listener(move |this, _, _, _| this.open_attachment(&attachment))),
             );
         }
+        let mut emojis = self.reactions.for_message(&msg.guid);
         if !msg.body().is_empty() {
             let text = msg.body().to_string();
             let body = if outgoing {
                 row::card(text, current.failure.is_some(), &p)
             } else {
-                row::text(text, &p)
+                row::text(text, std::mem::take(&mut emojis), &p)
             };
             content = content.child(body.when(current.pending, |el| el.opacity(0.6)));
         }
-        let emojis = self.reactions.for_message(&msg.guid);
         if !emojis.is_empty() {
-            content = content.child(row::reactions(emojis, &p));
+            content = content.child(row::reactions(emojis));
         }
         column = column.child(content);
 
@@ -748,7 +748,6 @@ impl Render for ThreadView {
                     .border_b_1()
                     .border_color(p.muted)
                     .text_sm()
-                    .child(div().text_color(p.dim_foreground).child("Messages /"))
                     .child(
                         div()
                             .min_w_0()
@@ -757,23 +756,12 @@ impl Render for ThreadView {
                             .text_color(p.foreground)
                             .child(self.header.title.clone()),
                     )
-                    .when(!service.is_empty(), |el| {
-                        el.child(
-                            div()
-                                .flex_none()
-                                .h(px(22.))
-                                .px_2()
-                                .h_flex()
-                                .gap_1p5()
-                                .rounded_full()
-                                .border_1()
-                                .border_color(p.muted)
-                                .text_xs()
-                                .text_color(p.dim_foreground)
-                                .child(div().size(px(6.)).rounded_full().bg(p.green))
-                                .child(service),
-                        )
-                    }),
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_color(p.dim_foreground)
+                            .child(service),
+                    ),
             )
             .child(
                 div().flex_1().min_h_0().child(

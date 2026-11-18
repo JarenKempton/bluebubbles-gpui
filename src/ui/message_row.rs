@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::{api::Attachment, media::Media, omarchy::Palette};
@@ -52,13 +53,19 @@ pub fn system(text: String, p: &Palette) -> Div {
         .child(text)
 }
 
-pub fn text(text: String, p: &Palette) -> Div {
+pub fn text(text: String, reactions: Vec<&str>, p: &Palette) -> Div {
     div()
         .max_w(px(TEXT_MAX_WIDTH))
+        .h_flex()
+        .items_end()
+        .gap_2()
         .text_sm()
         .line_height(px(22.))
         .text_color(p.foreground)
-        .child(text)
+        .child(div().min_w_0().child(text))
+        .when(!reactions.is_empty(), |el| {
+            el.child(self::reactions(reactions))
+        })
 }
 
 pub fn card(text: String, failed: bool, p: &Palette) -> Div {
@@ -162,18 +169,8 @@ pub fn file(attachment: &Attachment, p: &Palette) -> Div {
         .child(div().text_xs().text_color(p.dim_foreground).child(size))
 }
 
-pub fn reactions(emojis: Vec<&str>, p: &Palette) -> Div {
-    div()
-        .h(px(22.))
-        .px_2()
-        .h_flex()
-        .gap_1()
-        .rounded_full()
-        .border_1()
-        .border_color(p.muted)
-        .text_xs()
-        .text_color(p.dim_foreground)
-        .children(emojis.into_iter().map(|e| e.to_string()))
+pub fn reactions(emojis: Vec<&str>) -> Div {
+    div().flex_none().text_sm().child(emojis.join(" "))
 }
 
 pub fn status(label: String, failed: bool, p: &Palette) -> Div {

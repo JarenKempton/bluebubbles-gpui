@@ -85,7 +85,7 @@ pub fn row(entry: &ChatEntry, selected: bool, cx: &App) -> Div {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .when(entry.unread, |el| el.font_weight(FontWeight::MEDIUM))
+                    .when(entry.unread, |el| el.font_weight(FontWeight::SEMIBOLD))
                     .text_color(if entry.unread || selected {
                         p.foreground
                     } else {
@@ -93,26 +93,18 @@ pub fn row(entry: &ChatEntry, selected: bool, cx: &App) -> Div {
                     })
                     .child(entry.title.clone()),
             )
-            .map(|el| {
-                if entry.unread {
-                    el.child(
-                        div()
-                            .flex_none()
-                            .size(px(6.))
-                            .rounded_full()
-                            .bg(p.foreground),
-                    )
-                } else if entry.last_at > 0 {
-                    el.child(
-                        div()
-                            .flex_none()
-                            .text_xs()
-                            .text_color(p.dim_foreground.opacity(0.8))
-                            .child(time::relative(entry.last_at)),
-                    )
-                } else {
-                    el
-                }
+            .when(entry.last_at > 0, |el| {
+                el.child(
+                    div()
+                        .flex_none()
+                        .text_xs()
+                        .text_color(if entry.unread {
+                            p.foreground
+                        } else {
+                            p.dim_foreground.opacity(0.8)
+                        })
+                        .child(time::relative(entry.last_at)),
+                )
             }),
     )
 }
